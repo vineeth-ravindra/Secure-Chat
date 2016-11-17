@@ -90,3 +90,7 @@ ENV/
 
 #Visual studio code
 .vscode/
+
+#Test files
+test.py
+
