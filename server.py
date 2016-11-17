@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import padding
+import handelConnection
 
 class server():
     def __init__(self):
@@ -26,22 +27,16 @@ class server():
     def closeSocket(self):
         self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
-    
-    def _parseData(self,data,address):
-        try:
-            data = json.loads(data)
-            if data["messageType"] == "now-online" :
-                self.sock.sendto("Wait! game is now going to start",address)
-        except Exception as e:
-            print "Unsolicited message from address :"+ str(address)
-            return
 
-    def run(self):
+    def run(self,connectionHandel):
         print "Server running"
         while True:
             data , address = self.sock.recvfrom(2048);
-            self._parseData(data,address);
+            ret = connectionHandel._parseData(data,address);
+            if ret:
+                self.sock.sendto(ret,address)
 
 if __name__ == "__main__":
+    c = handelConnection.connection()
     s = server()
-    s.run()
+    s.run(c)
