@@ -94,3 +94,8 @@ ENV/
 #Test files
 test.py
 
+#DS Store Apple files
+.DS_Store
+
+#Py Charm files
+.idea/

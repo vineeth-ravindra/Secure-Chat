@@ -2,6 +2,7 @@ import os
 import pyDH
 import pickle
 import pymongo
+import hashlib
 from random import randint
 
 class connection:
@@ -11,8 +12,11 @@ class connection:
         
     def nowOnlineResponse(self):
         rand = os.urandom(100)
-        t = randint(512,1024)
-        obj = {"message-type":"quiz","response":rand}
+        t = randint(30000,65536)
+        sha = hashlib.sha256()
+        sha.update(rand+str(t))
+        guess = sha.digest()
+        obj = {"message-type":"quiz","challange":rand,"answer":guess}
         ret = pickle.dumps(obj)
         return ret
 
@@ -43,12 +47,12 @@ class connection:
         return False
 
     def logErrors(self,errTime,address):
-        print "There was an during " + errTime + " from host"+address
+        print "There was an error during " + errTime + " from host"+address
 
     def _parseData(self,data,address):
         try:
             data = pickle.loads(data)
-            if data["messageType"] == "now-online" :
+            if data["messageType"] == "now-online":
                 ret = self.nowOnlineResponse()
                 return ret
             if data["message-type"] == "quiz-response":

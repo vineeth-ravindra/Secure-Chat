@@ -31,8 +31,8 @@ class server():
     def run(self,connectionHandel):
         print "Server running"
         while True:
-            data , address = self.sock.recvfrom(2048);
-            ret = connectionHandel._parseData(data,address);
+            data , address = self.sock.recvfrom(2048)
+            ret = connectionHandel._parseData(data,address)
             if ret:
                 self.sock.sendto(ret,address)
 
