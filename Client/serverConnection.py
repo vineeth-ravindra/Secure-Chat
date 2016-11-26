@@ -72,6 +72,7 @@ class connection:
                obj = pickle.dumps(obj)
                obj = self.encryptMessageWithServerPubKey(obj)
                return pickle.dumps({
+                   "user" :"alice",
                    "encoded":obj,
                    "messageType":"quiz-response"
                })
@@ -84,6 +85,7 @@ class connection:
         #Step 2 : Send Response to challange
         data = self.puzzleSolve(data)
         self.sendData(data)
-
+        data = self.recvData()
+        print data
 
 

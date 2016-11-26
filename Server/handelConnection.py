@@ -1,4 +1,4 @@
-import os,sys,DH,pickle
+import os,sys,DH,pickle,binascii
 import hashlib,zlib,pymongo
 from random import randint
 from cryptography.hazmat.primitives import serialization,hashes
@@ -34,7 +34,7 @@ class connection:
             x = f.read()
             x = x.split('\n')
             for i in x:
-                if i.split(":+++:")[0] == user:
+                if i.split(":+++:")[0].lower() == user.lower():
                     return i.split(":+++:")[1]
         return False
             
@@ -42,22 +42,23 @@ class connection:
         response = self.__decryptMessageUsingPrivateKey(data["encoded"])
         response = zlib.decompress(response)
         response = pickle.loads(response)
-        pubKey = self.diffiObj.gen_public_key()                         # This is (gb mod p)
-        senderPubKey = response["pubKey"]                               # This is (ga mod p)
-        sharedSecret = self.diffiObj.gen_shared_key(senderPubKey)       # This is (gab mop p)
-        # senderPassHash = self.__findPasswordHashForUser(data["Alice"])
-        # if senderPassHash:
-        #     gpowaw = self.diffiObj.gen_shared_key(senderPassHash)
-        #     sha = hashlib.sha256()
-        #     sha.update(gpowaw)
-        #     gpowaw = sha.digest()
-        #     obj = {
-        #             "gpowaw":gpowaw,
-        #             "pubKey":pubKey
-        #         }
-        #     ret = pickle.dumps(obj)
-        #     return ret
-        # return False
+        pubKey = self.diffiObj.gen_public_key()                                     # This is (gb mod p)
+        senderPubKey = long(response["pubKey"])                                     # This is (ga mod p)
+        sharedSecret = self.diffiObj.gen_shared_key(senderPubKey)                   # This is (gab mop p)
+        userPassHash = self.__findPasswordHashForUser(data["user"])
+
+        if userPassHash:
+            gpowbw = self.diffiObj.gen_gpowxw(userPassHash)
+            sha = hashlib.sha256()
+            sha.update(str(gpowbw)+str(sharedSecret))
+            hash = int(binascii.hexlify(sha.digest()), base=16)
+            obj = {
+                    "hash":hash,
+                    "pubKey":pubKey
+                }
+            ret = pickle.dumps(obj)
+            return ret
+        return False
 
 
     def __decryptMessageUsingPrivateKey(self, message):
