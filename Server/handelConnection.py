@@ -10,7 +10,7 @@ class connection:
         self.diffiObj = DH.DiffieHellman()
         with open("private_key.pem", "rb") as key_file:
             try:
-                self.privateKey = serialization.load_pem_private_key(
+                self.__privateKey = serialization.load_pem_private_key(
                     key_file.read(),
                     password=None,
                     backend=default_backend())
@@ -46,7 +46,7 @@ class connection:
         senderPubKey = long(response["pubKey"])                                     # This is (ga mod p)
         sharedSecret = self.diffiObj.gen_shared_key(senderPubKey)                   # This is (gab mop p)
         userPassHash = self.__findPasswordHashForUser(data["user"])
-
+        print sharedSecret
         if userPassHash:
             gpowbw = self.diffiObj.gen_gpowxw(userPassHash)
             sha = hashlib.sha256()
@@ -54,16 +54,18 @@ class connection:
             hash = int(binascii.hexlify(sha.digest()), base=16)
             obj = {
                     "hash":hash,
-                    "pubKey":pubKey
+                    "pubKey":pubKey,
+                    "salt" : self.__findPasswordHashForUser("SALT")
                 }
             ret = pickle.dumps(obj)
             return ret
         return False
 
 
+
     def __decryptMessageUsingPrivateKey(self, message):
         try:
-            plainText = self.privateKey.decrypt(
+            plainText = self.__privateKey.decrypt(
                 message,
                 padding.OAEP(
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
