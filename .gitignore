@@ -99,6 +99,8 @@ test.py
 
 #Py Charm files
 .idea/
+.idea
+
 
 #Ignore Private Keys and Public Keys
 private_key.pem
