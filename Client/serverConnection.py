@@ -1,25 +1,38 @@
 import socket
 import pickle
 import hashlib
-import pyDH
+import DH
+import sys
+import zlib
+from cryptography.hazmat.primitives import serialization,hashes
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives.asymmetric import padding
 
 class connection:
     def __init__(self):
-        self.diffi = pyDH.DiffieHellman()
+        self.diffi = DH.DiffieHellman()
         self.pubKey = self.diffi.gen_public_key()
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         except e:
             print "Error while creating socket"
             sys.exit(0)
+
+        with open("public_key.pem", "rb") as key_file:
+            try:
+                self.serverPublicKey = serialization.load_pem_public_key(
+                    key_file.read(),
+                    backend = default_backend())
+            except:
+                print "Error while loading key " + file
+                sys.exit(0)
     
     def sendData(self,obj):
-        obj = pickle.dumps(obj)
         try:
             self.sock.sendto(obj,('',2424))
         except Exception as e:
             print "Error while sending data"
-    
+
     def recvData(self):
         data = None
         while data is None:
@@ -27,8 +40,24 @@ class connection:
         data = pickle.loads(data)
         return data
 
+    def encryptMessageWithServerPubKey(self, message):
+        try:
+            message = zlib.compress(message)
+            cipherText = self.serverPublicKey.encrypt(
+                message,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None))
+        except Exception as e:
+            print "Unable to perform asymetric encryption",e
+            sys.exit(0)
+        return cipherText
+
+
     def sayHello(self):
-        desObj = {"messageType":"now-online"}
+        desObj = {"messageType":"now-online","user":"alice"} #TODO: Need to make sure the user is not hard coded
+        desObj = pickle.dumps(desObj)
         self.sendData(desObj)
 
     def puzzleSolve(self,data):
@@ -38,9 +67,14 @@ class connection:
             sha = hashlib.sha256()
             sha.update(response+str(x))
             if sha.digest() == data["answer"]:
-               obj["response"] = x
+               obj["answer"] = x
                obj["pubKey"] = self.pubKey
-               return obj
+               obj = pickle.dumps(obj)
+               obj = self.encryptMessageWithServerPubKey(obj)
+               return pickle.dumps({
+                   "encoded":obj,
+                   "messageType":"quiz-response"
+               })
         return False
             
     def establishConnection(self):

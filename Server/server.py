@@ -2,12 +2,7 @@ import os
 import sys
 import json
 import socket
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.asymmetric import padding
+
 import handelConnection
 
 class server():
@@ -31,7 +26,7 @@ class server():
     def run(self,connectionHandel):
         print "Server running"
         while True:
-            data , address = self.sock.recvfrom(2048)
+            data , address = self.sock.recvfrom(4096)
             ret = connectionHandel._parseData(data,address)
             if ret:
                 self.sock.sendto(ret,address)

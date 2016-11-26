@@ -1,16 +1,25 @@
-import os
-import pyDH
-import pickle
-import pymongo
-import hashlib
+import os,sys,DH,pickle
+import hashlib,zlib,pymongo
 from random import randint
+from cryptography.hazmat.primitives import serialization,hashes
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.backends import default_backend
 
 class connection:
     def __init__(self):
-        self.diffiObj = pyDH.DiffieHellman()
+        self.diffiObj = DH.DiffieHellman()
+        with open("private_key.pem", "rb") as key_file:
+            try:
+                self.privateKey = serialization.load_pem_private_key(
+                    key_file.read(),
+                    password=None,
+                    backend=default_backend())
+            except:
+                print "Error while Loading key " + file
+                sys.exit(0)
         
         
-    def nowOnlineResponse(self):
+    def __nowOnlineResponse(self):
         rand = os.urandom(100)
         t = randint(30000,65536)
         sha = hashlib.sha256()
@@ -20,7 +29,7 @@ class connection:
         ret = pickle.dumps(obj)
         return ret
 
-    def findPasswordHashForUser(self,user):
+    def __findPasswordHashForUser(self,user):
         with open("server.conf") as f:
             x = f.read()
             x = x.split('\n')
@@ -29,36 +38,54 @@ class connection:
                     return i.split(":+++:")[1]
         return False
             
-    def challangeResponse(self,data):
-        pubKey = self.diffiObj.gen_public_key()         #This is (gb mod p)
-        senderPubKey = data["pubKey"]                   #This is (ga mod p)
-        senderPassHash = self.findPasswordHashForUser(data["sender"])
-        if senderPassHash:
-            gpowaw = self.diffiObj.gen_shared_key(senderPassHash)
-            sha = hashlib.sha256()
-            sha.update(gpowaw)
-            gpowaw = sha.digest()
-            obj = {
-                    "gpowaw":gpowaw,
-                    "pubKey":pubKey
-                }
-            ret = pickle.dumps(obj)
-            return ret
-        return False
+    def __challangeResponse(self,data):
+        response = self.__decryptMessageUsingPrivateKey(data["encoded"])
+        response = zlib.decompress(response)
+        response = pickle.loads(response)
+        pubKey = self.diffiObj.gen_public_key()                         # This is (gb mod p)
+        senderPubKey = response["pubKey"]                               # This is (ga mod p)
+        sharedSecret = self.diffiObj.gen_shared_key(senderPubKey)       # This is (gab mop p)
+        # senderPassHash = self.__findPasswordHashForUser(data["Alice"])
+        # if senderPassHash:
+        #     gpowaw = self.diffiObj.gen_shared_key(senderPassHash)
+        #     sha = hashlib.sha256()
+        #     sha.update(gpowaw)
+        #     gpowaw = sha.digest()
+        #     obj = {
+        #             "gpowaw":gpowaw,
+        #             "pubKey":pubKey
+        #         }
+        #     ret = pickle.dumps(obj)
+        #     return ret
+        # return False
 
-    def logErrors(self,errTime,address):
+
+    def __decryptMessageUsingPrivateKey(self, message):
+        try:
+            plainText = self.privateKey.decrypt(
+                message,
+                padding.OAEP(
+                    mgf=padding.MGF1(algorithm=hashes.SHA256()),
+                    algorithm=hashes.SHA256(),
+                    label=None))
+        except:
+            print "Unable to perform symetric decryption"
+            sys.exit(0)
+        return plainText
+
+    def __logErrors(self,errTime,address):
         print "There was an error during " + errTime + " from host"+address
 
     def _parseData(self,data,address):
         try:
             data = pickle.loads(data)
             if data["messageType"] == "now-online":
-                ret = self.nowOnlineResponse()
+                ret = self.__nowOnlineResponse()
                 return ret
-            if data["message-type"] == "quiz-response":
-                ret = self.challangeResponse(data)
+            if data["messageType"] == "quiz-response":
+                ret = self.__challangeResponse(data)
                 if not ret:
-                    self.logErrors("Response from sender",address)
+                    self.__logErrors("Response from sender",address)
                 return ret
         except Exception as e:
             print "Unsolicited message from address :" + str(address)
