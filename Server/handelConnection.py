@@ -1,5 +1,5 @@
 import os,sys,DH,pickle,binascii
-import hashlib,zlib,pymongo
+import hashlib,zlib,pymongo,json
 from random import randint
 from cryptography.hazmat.primitives import serialization,hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -30,13 +30,12 @@ class connection:
         return ret
 
     def __findPasswordHashForUser(self,user):
-        with open("server.conf") as f:
-            x = f.read()
-            x = x.split('\n')
-            for i in x:
-                if i.split(":+++:")[0].lower() == user.lower():
-                    return i.split(":+++:")[1]
-        return False
+        with open("SERVER.conf") as json_file:
+            json_data = json.load(json_file)
+            if user.lower() in json_data:
+                return json_data[user.lower()]
+            else :
+                return False
             
     def __challangeResponse(self,data):
         response = self.__decryptMessageUsingPrivateKey(data["encoded"])
@@ -46,16 +45,14 @@ class connection:
         senderPubKey = long(response["pubKey"])                                     # This is (ga mod p)
         sharedSecret = self.diffiObj.gen_shared_key(senderPubKey)                   # This is (gab mop p)
         userPassHash = self.__findPasswordHashForUser(data["user"])
-        print sharedSecret
         if userPassHash:
-            gpowbw = self.diffiObj.gen_gpowxw(userPassHash)
+            gpowbw = self.diffiObj.gen_gpowxw(pubKey,userPassHash)
             sha = hashlib.sha256()
             sha.update(str(gpowbw)+str(sharedSecret))
             hash = int(binascii.hexlify(sha.digest()), base=16)
             obj = {
                     "hash":hash,
                     "pubKey":pubKey,
-                    "salt" : self.__findPasswordHashForUser("SALT")
                 }
             ret = pickle.dumps(obj)
             return ret

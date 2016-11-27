@@ -1,11 +1,13 @@
 # Created By Vineeth
-# Use this file to create the config file
-# The config file stores hash of all passwords and the salt information
-
+'''
+        Use this file to create the config file
+        The config file stores hash of all passwords and the salt information
+'''
 
 import os
 import hashlib
 import binascii
+import json
 users = ["Alice:password","Bob:Her0sRu1e"]
 
 primes = {
@@ -16,17 +18,28 @@ primes = {
 
 
 def generatePasswordFile(users):
-    with open('SERVER.conf', 'a') as f:
-        salt = int(binascii.hexlify(os.urandom(15)), base=16)
-        f.write("SALT:+++:"+str(salt)+"\n")
-        for user in users:
-            sha = hashlib.sha256()
-            user = user.split(":")
-            sha.update(user[1]+str(salt))
-            hash = sha.digest()
-            hash =int(binascii.hexlify(hash), base=16)
-            secret = pow(primes["generator"],hash,primes["prime"])
-            f.write(user[0]+":+++:"+str(secret)+"\n")
+    '''
+         generatePasswordFile(List) :
+                    Input   : List (List of username:password)
+                    Output : None
+                    Purpose : Given a list of username passwords, Writes to a
+                              file a JSON of the same The generated file is used as
+                              the server config file
+    '''
+    obj = {}
+    salt = int(binascii.hexlify(os.urandom(15)), base=16)
+    obj["salt"] = salt
+    for user in users:
+        sha = hashlib.sha256()
+        user = user.split(":")
+        sha.update(user[1]+str(salt))
+        hash = sha.digest()
+        hash =int(binascii.hexlify(hash), base=16)
+        secret = pow(primes["generator"],hash,primes["prime"])
+        obj[user[0]] = secret
+
+    with open('SERVER.conf', 'w') as outfile:
+        json.dump(obj, outfile)
 
 generatePasswordFile(users)
 
@@ -35,8 +48,6 @@ generatePasswordFile(users)
 # ****************
 # Read File
 # ****************
-# with open("server.conf") as f:
-#     x = f.read()
-#     x = x.split('\n')
-#     for i in x:
-#         print i.split(":+++:")[0]
+# with open("SERVER.conf") as json_file:
+#     json_data = json.load(json_file)
+#     print json_data["Bob"]

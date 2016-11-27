@@ -29,12 +29,12 @@ class DiffieHellman:
             self.shared_key = pow(other_contribution, self.__a, self.p)
             return hashlib.sha256(str(self.shared_key).encode()).hexdigest()
         except Exception as e:
-            print "Error during determining g^ab mod p",e
+            print "Error during determining g^ab mod p"
 
-    def gen_gpowxw(self,password_hash):
+    def gen_gpowxw(self,publicKey,passwordHash):
         # calculate the shared key G^bw mod p
         try:
-            self.shared_key = pow(long(password_hash), self.__a, self.p)
+            self.shared_key = pow(publicKey, passwordHash, self.p)
             return hashlib.sha256(str(self.shared_key).encode()).hexdigest()
         except Exception as e:
-            print "Error during determining g^aw mod p",e
+            print "Error during determining g^ab mod p"
