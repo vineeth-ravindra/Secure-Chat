@@ -69,7 +69,7 @@ class server():
         while True:
             data , address = self.sock.recvfrom(4096)
             data = connectionHandel.parseData(data,address)
-            if data:
+            if not isinstance(data, (int)):
                 self.__sendData(data,address)
 
     def signal_handler(self, signal, frame):

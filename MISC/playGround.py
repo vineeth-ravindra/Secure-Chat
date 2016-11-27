@@ -3,9 +3,9 @@ import sys
 import pickle
 import socket
 import json
-import handelConnection
 import hashlib 
 import pymongo
+from datetime import datetime
 
 # ***************************
 # Part of opening connection and sending i am online
@@ -58,6 +58,6 @@ import pymongo
 # Tests to connect to mongo client
 # ***************************
 client = pymongo.MongoClient()
-db = client.superTest
-db.log_events.create_index("date", expireAfterSeconds=15)
-db.log_events.insert({"hahaha":"hello world", "date": utc_timestamp})
+db = client.MongoLabs
+db.test.create_index("date", expireAfterSeconds=15)
+db.test.insert({"hahaha":"hello world", "date": datetime.utcnow()})
