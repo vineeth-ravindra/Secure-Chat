@@ -16,7 +16,7 @@ class connection:
                   3) Request Server for user Keys
 
     '''
-    def __init__(self):
+    def __init__(self,username,password):
         '''
             __init__(None) :
                 Input   : None
@@ -26,6 +26,8 @@ class connection:
                           2) Reads the public_key.pem file and obtains the servers public key
                           3) Creates socket to talk to server
         '''
+        self.__username = username
+        self.__convertPasswordToSecret(password)
         self.__diffi = DH.DiffieHellman()
         self.pubKey = self.__diffi.gen_public_key()
         self.__readConfigFile()
@@ -119,11 +121,11 @@ class connection:
                     Purpose        : First step of Augmented string password protocol to inform server
                                      the client is now online and it requests to establish a shared
                                      secret
-                    Message Format : { messageType,
+                    Message Format : { messageType :now-online,
                                         username
                                      }
         '''
-        desObj = {"messageType":"now-online","user":"alice"} #TODO: Need to make sure the user is not hard coded
+        desObj = {"messageType":"now-online","user":self.__username}
         desObj = pickle.dumps(desObj)
         self.__sendData(desObj)
 
@@ -147,7 +149,7 @@ class connection:
                obj = pickle.dumps(obj)
                obj = self.__encryptMessageWithServerPubKey(obj)
                return pickle.dumps({
-                   "user" :"alice",
+                   "user" :self.__username,
                    "encoded":obj,
                    "messageType":"quiz-response"
                })
@@ -175,22 +177,25 @@ class connection:
         """__establishSecret(String):
             Input   : String (Response from server with the for the sent response,
                       Contains servers public Key Diffie Hellman key
-            Output  : Object containing sha384 of g^bw modp and g^ab
+            Output  :
+                        1) False if the hash sent does not match
+                        2)Object containing sha384 of g^bw modp and g^ab
             Purpose : Verify the users password is correct and complete the password
                         authentication by sending the sha384 of g^bw modp and g
             Message Format :
-                                { user , S{hash} }
+                                {messageType: est , user , S{hash} }
         """
         serverPubKey = long(data["pubKey"])
         sharedSecret = self.__diffi.gen_shared_key(serverPubKey)
-        self.__convertPasswordToSecret("password")
         gpowbw =  self.__diffi.gen_gpowxw(serverPubKey,self.__passSecret)
-        self.__verifyPassword(gpowbw,sharedSecret,long(data["hash"]))
+        if not self.__verifyPassword(gpowbw,sharedSecret,long(data["hash"])):
+            return False
         hash = self.__gen384Hash(gpowbw,sharedSecret)
         hash = self.__encryptMessageWithServerPubKey(str(hash))
         obj = {
+            "messageType" : "complete",
             "hash" : hash,
-            "user" : "alice"
+            "user" : self.__username
         }
         return pickle.dumps(obj)
 
@@ -223,7 +228,7 @@ class connection:
             print "Login Success"
         else :
             print "Invalid username password please try again"
-            sys.exit(0)
+            return False
 
 
 
@@ -237,11 +242,14 @@ class connection:
         # Step 1 : Say Hello 
         self.__sayHello()
         data = self.__recvData()
-        #Step 2 : Send Response to challange
+        # Step 2 : Send Response to challange
         data = self.__puzzleSolve(data)
         self.__sendData(data)
         data = self.__recvData()
         # Step 3 : Generate Shared Secret and complete connection
-        self.__establishSecret(data)
-
-
+        data = self.__establishSecret(data)
+        if not data:
+            return False
+        else:
+            self.__sendData(data)
+        return True
