@@ -68,7 +68,7 @@ class server():
         print "Server running"
         while True:
             data , address = self.sock.recvfrom(4096)
-            data = connectionHandel._parseData(data,address)
+            data = connectionHandel.parseData(data,address)
             if data:
                 self.__sendData(data,address)
 
@@ -85,7 +85,6 @@ class server():
         sys.exit(0)
 
 if __name__ == "__main__":
-    c = handelConnection.connection()
-    signal.signal(signal.SIGINT, c.signal_handler)
+    c = handelConnection.Connection()
     s = server()
     s.run(c)

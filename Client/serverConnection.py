@@ -26,11 +26,11 @@ class connection:
                           2) Reads the public_key.pem file and obtains the servers public key
                           3) Creates socket to talk to server
         '''
+        self.__readConfigFile()
         self.__username = username
         self.__convertPasswordToSecret(password)
         self.__diffi = DH.DiffieHellman()
         self.pubKey = self.__diffi.gen_public_key()
-        self.__readConfigFile()
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         except Exception as e:
@@ -69,16 +69,16 @@ class connection:
             sys.exit(0)
 
 
-    def __sendData(self,obj):
+    def __sendData(self,message):
         ''' __sendData(String) :
                         Input   : String
                         Output  : None
                         Purpose : Sends the given String to the server
         '''
         try:
-            self.sock.sendto(obj,('',2424))
+            self.sock.sendto(message,('',2424))
         except Exception as e:
-            print "Error while sending data"
+            print "Error while sending data",e
 
     def __recvData(self):
         ''' __recvData(None) :
@@ -163,13 +163,14 @@ class connection:
                                      Once the secret is generated the passwords is forgotten
         '''
         sha = hashlib.sha256()
-        sha.update(password+str(self.__salt))
+        sha.update(password + str(self.__salt))
         hash = sha.digest()
         hash = int(binascii.hexlify(hash), base=16)
         try :
             self.__passSecret = pow(self.__generator, hash, self.__prime)
+            print self.__passSecret
         except Exception as e:
-            print e
+            print "Unable to convert password to secret ",e
         password = None
 
 
@@ -179,25 +180,26 @@ class connection:
                       Contains servers public Key Diffie Hellman key
             Output  :
                         1) False if the hash sent does not match
-                        2)Object containing sha384 of g^bw modp and g^ab
+                        2) Object containing sha384 of g^bw modp and g^ab
             Purpose : Verify the users password is correct and complete the password
                         authentication by sending the sha384 of g^bw modp and g
             Message Format :
-                                {messageType: est , user , S{hash} }
+                                {messageType: complete , user , hash }
         """
         serverPubKey = long(data["pubKey"])
         sharedSecret = self.__diffi.gen_shared_key(serverPubKey)
         gpowbw =  self.__diffi.gen_gpowxw(serverPubKey,self.__passSecret)
-        if not self.__verifyPassword(gpowbw,sharedSecret,long(data["hash"])):
+        if self.__verifyPassword(gpowbw,sharedSecret,long(data["hash"])) is False:
             return False
         hash = self.__gen384Hash(gpowbw,sharedSecret)
-        hash = self.__encryptMessageWithServerPubKey(str(hash))
+        print hash
         obj = {
             "messageType" : "complete",
             "hash" : hash,
             "user" : self.__username
         }
         return pickle.dumps(obj)
+
 
     def __gen384Hash(self,gpowbw,sharedSecret):
         '''
@@ -224,12 +226,12 @@ class connection:
         '''
         sha = hashlib.sha256()
         sha.update(str(gpowbw) + str(sharedSecret))
-        if  int(binascii.hexlify(sha.digest()), base=16) == serverHash:
+        hash = int(binascii.hexlify(sha.digest()), base=16)
+        if hash  == serverHash:
             print "Login Success"
         else :
             print "Invalid username password please try again"
             return False
-
 
 
     def establishConnection(self):
