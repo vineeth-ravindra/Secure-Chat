@@ -59,7 +59,7 @@ class Connection:
             else :
                 return False
             
-    def __challangeResponse(self,data):
+    def __challangeResponse(self,senderObj):
         '''
             __challangeResponse(Object):
             Input  : Object {messageType:"quiz-response", encoded } (Response from server to challenge)
@@ -70,26 +70,21 @@ class Connection:
             Purpose : Send server public secret and augmented information
 
         '''
-        response = self.__decryptMessageUsingPrivateKey(data["encoded"])
-        response = zlib.decompress(response)
-        response = pickle.loads(response)
-        pubKey = self.diffiObj.gen_public_key()                                     # This is (gb mod p)
-        senderPubKey = long(response["pubKey"])                                     # This is (ga mod p)
-        sharedSecret = self.diffiObj.gen_shared_key(senderPubKey)                   # This is (gab mop p)
-        print sharedSecret
-        userPassHash = self.__findPasswordHashForUser(data["user"])
+
+        pubKey = self.diffiObj.gen_public_key()                                               # This is (gb mod p)
+        self.__sharedSecret = self.diffiObj.gen_shared_key(long(senderObj["pubKey"]))         # This is (gab mop p)
+        print "Shared Secret is : ", self.__sharedSecret
+        userPassHash = self.__findPasswordHashForUser(senderObj["user"])
         if userPassHash:
             gpowbw = self.diffiObj.gen_gpowxw(pubKey,userPassHash)
             sha = hashlib.sha256()
-            sha.update(str(gpowbw)+str(sharedSecret))
+            sha.update(str(gpowbw)+str(self.__sharedSecret))
             hash = int(binascii.hexlify(sha.digest()), base=16)
-            obj = {
+            return pickle.dumps({
                     "messageType" : "initiateSecret",
-                    "hash":hash,
-                    "pubKey":pubKey,
-                }
-            ret = pickle.dumps(obj)
-            return ret
+                    "hash"        :hash,
+                    "pubKey"      :pubKey,
+                })
         return False
 
 
@@ -109,10 +104,10 @@ class Connection:
                     mgf=padding.MGF1(algorithm=hashes.SHA256()),
                     algorithm=hashes.SHA256(),
                     label=None))
-        except:
-            print "Unable to perform symetric decryption"
+        except Exception as e:
+            print "Unable to perform asymmetric decryption",e
             sys.exit(0)
-        return plainText
+        return zlib.decompress(plainText)
 
     def __logErrors(self,errTime,address):
         '''
@@ -147,11 +142,33 @@ class Connection:
 
         '''
         hash = data["hash"]
-        print hash
         #TODO  : Verify if sha384 is same
         #TODO  : Store sesssion key and complete this whole process
         print "Hurray Hurry"
         return False
+
+    def __loadPickledData(self,message):
+        try:
+            return pickle.loads(message)
+        except Exception as e:
+            return False
+
+    def __parseStreamData(self,message):
+        '''
+            __parseStreamData(String):
+                Input   : String (Data on sock stream)
+                Output  : Obj
+                Purpose : Given the data sent by the client on the wire
+                            the data is unpickled, decrypted and converted
+                             into object for further use
+        '''
+        unPickledData = self.__loadPickledData(message)
+        if unPickledData is False:
+            self.__logErrors("Error while trying to dump data",('',''))
+        decryptedResponse = self.__decryptMessageUsingPrivateKey(unPickledData["message"])
+        decryptedResponse = self.__loadPickledData(decryptedResponse)
+        decryptedResponse["user"] = unPickledData["user"]
+        return decryptedResponse
 
     def parseData(self,data,address):
         '''
@@ -162,21 +179,14 @@ class Connection:
                             to send to client
 
         '''
-        try:
-            data = pickle.loads(data)
-        except Exception as e:
-            print "Unsolicited message from address :" + str(address)
-            return False
-
+        decryptedResponse = self.__parseStreamData(data)
         ret = False
-        if data["messageType"] == "now-online":
+        if decryptedResponse["messageType"] == "now-online":
             ret = self.__nowOnlineResponse()
-        elif data["messageType"] == "quiz-response":
-            ret = self.__challangeResponse(data)
-
-        elif data["messageType"] == "complete":
-            ret = self.__completeAuth(data)
-
+        elif decryptedResponse["messageType"] == "quiz-response":
+            ret = self.__challangeResponse(decryptedResponse)
+        elif decryptedResponse["messageType"] == "complete":
+            ret = self.__completeAuth(decryptedResponse)
         if not ret:
             self.__logErrors("Response from sender",address)
             return "unknownMessage"

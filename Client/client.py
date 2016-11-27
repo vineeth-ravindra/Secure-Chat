@@ -24,7 +24,8 @@ class client:
             # userName = sys.stdin.readline()
             # print "Enter Password :"
             # password = sys.stdin.readline()
-            c = serverConnection.connection("alice","pasasword").establishConnection()
+            c = serverConnection.connection("alice","password").establishConnection()
+            sys.exit(0)
             if c:
                 break
             else :

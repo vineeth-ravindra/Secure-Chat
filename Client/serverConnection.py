@@ -30,7 +30,8 @@ class connection:
         self.__username = username
         self.__convertPasswordToSecret(password)
         self.__diffi = DH.DiffieHellman()
-        self.pubKey = self.__diffi.gen_public_key()
+        self.__pubKey = self.__diffi.gen_public_key()
+
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         except Exception as e:
@@ -125,7 +126,13 @@ class connection:
                                         username
                                      }
         '''
-        desObj = {"messageType":"now-online","user":self.__username}
+        objToEnc = {"messageType":"now-online"}
+        objToEnc = pickle.dumps(objToEnc)
+        objToEnc = self.__encryptMessageWithServerPubKey(objToEnc)
+        desObj = {
+                "user": self.__username,
+                "message":objToEnc
+        }
         desObj = pickle.dumps(desObj)
         self.__sendData(desObj)
 
@@ -145,13 +152,13 @@ class connection:
             sha.update(response+str(x))
             if sha.digest() == data["answer"]:
                obj["answer"] = x
-               obj["pubKey"] = self.pubKey
+               obj["pubKey"] = self.__pubKey
+               obj["messageType"] = "quiz-response"
                obj = pickle.dumps(obj)
                obj = self.__encryptMessageWithServerPubKey(obj)
                return pickle.dumps({
-                   "user" :self.__username,
-                   "encoded":obj,
-                   "messageType":"quiz-response"
+                   "user"   :self.__username,
+                   "message": obj,
                })
         return False
 
@@ -168,7 +175,6 @@ class connection:
         hash = int(binascii.hexlify(hash), base=16)
         try :
             self.__passSecret = pow(self.__generator, hash, self.__prime)
-            print self.__passSecret
         except Exception as e:
             print "Unable to convert password to secret ",e
         password = None
@@ -187,16 +193,17 @@ class connection:
                                 {messageType: complete , user , hash }
         """
         serverPubKey = long(data["pubKey"])
-        sharedSecret = self.__diffi.gen_shared_key(serverPubKey)
+        self.__sharedSecret = self.__diffi.gen_shared_key(serverPubKey)
+        print "Shared Secret is ", self.__sharedSecret
         gpowbw =  self.__diffi.gen_gpowxw(serverPubKey,self.__passSecret)
-        if self.__verifyPassword(gpowbw,sharedSecret,long(data["hash"])) is False:
+        if self.__verifyPassword(gpowbw,self.__sharedSecret,long(data["hash"])) is False:
             return False
-        hash = self.__gen384Hash(gpowbw,sharedSecret)
-        print hash
+        hash = self.__gen384Hash(gpowbw,self.__sharedSecret)
+        objToEnc = pickle.dumps({"messageType" : "complete", "hash" : hash})
+        objToEnc = self.__encryptMessageWithServerPubKey(objToEnc)
         obj = {
-            "messageType" : "complete",
-            "hash" : hash,
-            "user" : self.__username
+            "user": self.__username,
+            "message"   : objToEnc
         }
         return pickle.dumps(obj)
 
