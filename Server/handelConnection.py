@@ -46,7 +46,7 @@ class Connection:
         '''
         return self.__sessionKeyDict
 
-    def __nowOnlineResponse(self,senderObj):
+    def __nowOnlineResponse(self, senderObj):
         '''
             __nowOnlineResponse(None):
                 Input  : None
@@ -66,7 +66,7 @@ class Connection:
         ret = pickle.dumps(obj)
         return ret
 
-    def __findPasswordHashForUser(self,user):
+    def __findPasswordHashForUser(self, user):
         '''
             __findPasswordHashForUser(String):
                 Input   :   (String) UserName
@@ -82,7 +82,7 @@ class Connection:
             else :
                 return False
             
-    def __challangeResponse(self,senderObj):
+    def __challangeResponse(self, senderObj):
         '''
             __challangeResponse(Object):
             Input  : Object {messageType:"quiz-response", encoded } (Response from server to challenge)
@@ -102,7 +102,7 @@ class Connection:
                 self.__authDict.pop(senderObj["user"])
         return False
 
-    def __challangeResponseHelper(self,senderObj,authInfo):
+    def __challangeResponseHelper(self, senderObj, authInfo):
         '''
             __challangeResponseHelper(Object,Object):
                     Input   : The  Objectified stream data from user
@@ -129,7 +129,7 @@ class Connection:
             })
         return False
 
-    def __genShaX(self,sha,message):
+    def __genShaX(self, sha, message):
         '''
             __genShaX(Object,String):
                     Input   : Object,Strint (THe sha object ie.sha256,384,512 and the message
@@ -170,7 +170,7 @@ class Connection:
         '''
         print "There was an error during " + errTime + " from host"+ str(address)
 
-    def __gen384Hash(self,gpowbw,sharedSecret):
+    def __gen384Hash(self, gpowbw, sharedSecret):
         '''
             __gen384Hash(float,float) :
                     Input   : g^bw mod p , g^ab mod p
@@ -185,7 +185,7 @@ class Connection:
         hash = int(binascii.hexlify(sha.digest()), base=16)
         return hash
 
-    def __completeAuth(self,senderObj):
+    def __completeAuth(self, senderObj, address):
         '''
             __completeAuth(Object) :
                 Input  : Object (The sender Objectified stream data from user
@@ -197,13 +197,16 @@ class Connection:
         if senderObj["user"] in self.__authDict:
             if senderObj["hash"] == self.__authDict[senderObj["user"]].getSha384() :
                 print "User " + senderObj["user"] + " Connected"
-                self.__sessionKeyDict[senderObj["user"]] = self.__authDict[senderObj["user"]].getSharedSecret()
+                self.__sessionKeyDict[senderObj["user"]] = [
+                    self.__authDict[senderObj["user"]].getSharedSecret() ,
+                     address
+                ]
                 return True
             else:
                 self.__authDict.pop(senderObj["user"])
         return False
 
-    def __loadPickledData(self,message):
+    def __loadPickledData(self, message):
         '''
             __loadPickledData(String):
                 Input  : String (Stream data from socket)
@@ -216,7 +219,7 @@ class Connection:
             print "Error while trying to unpickle data ",e
             return False
 
-    def __parseStreamData(self,senderObj):
+    def __parseStreamData(self, senderObj):
         '''
             __parseStreamData(String):
                 Input   : String (Data on sock stream)
@@ -230,7 +233,7 @@ class Connection:
         decryptedResponse["user"] = senderObj["user"]
         return decryptedResponse
 
-    def __newConnection(self,senderObj,address):
+    def __newConnection(self, senderObj, address):
         '''
             newConnection(Object,tupple) :
                 Input   : Object,tupple (Objectified data from sock and address)
@@ -245,12 +248,12 @@ class Connection:
         elif decryptedMessage["messageType"] == "quiz-response":
             response = self.__challangeResponse(decryptedMessage)
         elif decryptedMessage["messageType"] == "complete":
-            response = self.__completeAuth(decryptedMessage)
+            response = self.__completeAuth(decryptedMessage,address)
         if not response:
             self.__logErrors("Response from sender",address)
         return response
 
-    def __listUsers(self,senderObj):
+    def __listUsers(self, senderObj):
         '''
             __listUsers(None):
                 Input  : None
@@ -270,7 +273,7 @@ class Connection:
                 "IV":iv
             })
 
-    def __encryptSymetric(self,user,message,iv):
+    def __encryptSymetric(self, user, message, iv):
         '''
             __encryptSymetric(String,String):
                     Input  : String, String (The message to be Encryped and the IV
@@ -278,12 +281,12 @@ class Connection:
                     Purpose : Encrypt message with session keys of client and server(Ksx)
         '''
 
-        s = symetric(self.__sessionKeyDict[user])
+        s = symetric(self.__sessionKeyDict[user][0])
         encryptor = s.getEncryptor(iv)
         return s.encryptMessage(message, encryptor)
 
 
-    def __genKeyPair(self,message):
+    def __genKeyPair(self, message):
         '''
                     __listUsers():
 
@@ -304,7 +307,7 @@ class Connection:
             return False
 
 
-    def __establishedConnection(self,senderObj,address):
+    def __establishedConnection(self, senderObj, address):
         '''
              __establishedConnection(Object):
                     Input   : Object (Objectified data from sock )
@@ -312,7 +315,9 @@ class Connection:
                     Purpose :
         '''
         user = senderObj["user"]
-        s = symetric(self.__sessionKeyDict[user])
+        if user not in self.__sessionKeyDict:
+            return False
+        s = symetric(self.__sessionKeyDict[user][0])
         decryptor = s.getDecryptor(senderObj["IV"])
         message = pickle.loads (
             s.decrypt(senderObj["message"],decryptor)
@@ -325,7 +330,7 @@ class Connection:
 
 
 
-    def parseData(self,data,address):
+    def parseData(self, data, address):
         '''
             _parseData(String,tupple):
                     Input   : String,tupple (Input from socket and incoming address)
@@ -335,7 +340,7 @@ class Connection:
                                 a client requesting a new connection
         '''
         unPickledData = self.__loadPickledData(data)
-        if unPickledData["user"] in self.__sessionKeyDict:
+        if unPickledData["type"] == "sym":
             return self.__establishedConnection(unPickledData,address)
         else :
             return self.__newConnection(unPickledData,address)

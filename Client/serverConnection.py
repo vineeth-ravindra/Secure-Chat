@@ -127,15 +127,17 @@ class connection:
                                         username
                                      }
         '''
-        objToEnc = {"messageType":"now-online"}
-        objToEnc = pickle.dumps(objToEnc)
-        objToEnc = self.__encryptMessageWithServerPubKey(objToEnc)
-        desObj = {
-                "user": self.__username,
-                "message":objToEnc
+        encodedObject = self.__encryptMessageWithServerPubKey(
+                                    pickle.dumps({
+                                        "user"          : self.__username,
+                                        "messageType"   : "now-online",
+                                    }))
+        encodedObject = {
+                "user"      : self.__username,
+                "message"   : encodedObject,
+                "type"      : "asym"
         }
-        desObj = pickle.dumps(desObj)
-        self.__sendData(desObj)
+        self.__sendData(pickle.dumps(encodedObject))
 
     def __puzzleSolve(self,data):
         ''' __puzzleSolve(String):
@@ -147,19 +149,19 @@ class connection:
                             False -> If the solution to challenge does not exist
         '''
         response = data["challange"]
-        obj = {}
         for x in range (-1,65537):
             sha = hashlib.sha256()
             sha.update(response+str(x))
             if sha.digest() == data["answer"]:
-               obj["answer"] = x
-               obj["pubKey"] = self.__pubKey
-               obj["messageType"] = "quiz-response"
-               obj = pickle.dumps(obj)
-               obj = self.__encryptMessageWithServerPubKey(obj)
+               message = pickle.dumps({
+                   "answer"      : x,
+                   "pubKey"      : self.__pubKey,
+                   "messageType" : "quiz-response"
+               })
                return pickle.dumps({
-                   "user"   :self.__username,
-                   "message": obj,
+                   "user"       : self.__username,
+                   "message"    : self.__encryptMessageWithServerPubKey(message),
+                   "type"       : "asym"
                })
         return False
 
@@ -200,10 +202,10 @@ class connection:
             return False
         hash = self.__gen384Hash(gpowbw,self.__sharedSecret)
         objToEnc = pickle.dumps({"messageType" : "complete", "hash" : hash})
-        objToEnc = self.__encryptMessageWithServerPubKey(objToEnc)
         obj = {
-            "user": self.__username,
-            "message"   : objToEnc
+            "user"      : self.__username,
+            "message"   : self.__encryptMessageWithServerPubKey(objToEnc),
+            "type"      : "asym"
         }
         self.__sharedSecret = str(self.__sharedSecret)[0:16]
         return pickle.dumps(obj)
@@ -253,13 +255,14 @@ class connection:
         iv = os.urandom(16)
         message  = self.__encryptSymetric(
             self.__sharedSecret,iv,
-            pickle.dumps({"request": "list",
-                        "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
+            pickle.dumps({"request" : "list",
+                        "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))
                     }))
         obj = {
-            "user":self.__username,
-            "message":message,
-            "IV":iv
+            "user"      : self.__username,
+            "message"   : message,
+            "IV"        : iv,
+            "type"      : "sym"
         }
         self.__sendData(pickle.dumps(obj))
         a = self.__recvData()
