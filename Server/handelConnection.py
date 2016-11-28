@@ -25,7 +25,7 @@ class Connection:
         self.__diffiObj = DH.DiffieHellman()
         self.__authDict      = {}
         self.__sessionKeyDict = {}
-        self.__userNonce = {}
+        self.__userNonceHistor = {}
         with open("private_key.pem", "rb") as key_file:
             try:
                 self.__privateKey = serialization.load_pem_private_key(
@@ -205,7 +205,7 @@ class Connection:
         message = self.__encryptSymetric(
             user,
              pickle.dumps(
-                 { "disconnect" : True,
+                 { "message" : "disconnect",
                    "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
                 }),iv)
         self.__sessionKeyDict.pop(user)
@@ -297,8 +297,8 @@ class Connection:
         '''
         response = [False, address]
         message = senderObj["message"]
-        if message["Nonce"] not in self.__userNonce :
-            self.__userNonce[message["Nonce"]] = True
+        if message["Nonce"] not in self.__userNonceHistor :
+            self.__userNonceHistor[message["Nonce"]] = True
             iv = os.urandom(16)
             message = self.__encryptSymetric( senderObj["user"],
                 pickle.dumps({"Users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
@@ -329,7 +329,7 @@ class Connection:
         '''
         if message["user"] in self.__sessionKeyDict \
                 and message["target"] in self.__sessionKeyDict:
-            if message["Nonce"] in self.__userNonce:
+            if message["Nonce"] in self.__userNonceHistor:
                 return False
             iv = os.urandom(16)
             message = self.__encryptSymetric(

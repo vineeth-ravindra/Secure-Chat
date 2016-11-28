@@ -31,6 +31,7 @@ class connection:
         self.__username = username
         self.__convertPasswordToSecret(password)
         self.__diffi = DH.DiffieHellman()
+        self.__serverNonceHistory = {}
         self.__pubKey = self.__diffi.gen_public_key()
 
         try:
@@ -48,6 +49,8 @@ class connection:
                 print "Error while loading key ",e
                 sys.exit(0)
 
+    def getSock(self):
+        return self.sock
 
     def __readConfigFile(self):
         ''' __readConfigFile(None) :
@@ -243,7 +246,7 @@ class connection:
             print "Invalid username password please try again"
             return False
 
-    def listUsers(self):
+    def __listUsers(self):
         '''
             listUsers(None) :
                     Input  : None
@@ -295,6 +298,7 @@ class connection:
         encryptor = s.getEncryptor(iv)
         return s.encryptMessage(message, encryptor)
 
+
     def establishConnection(self):
         ''''establishConnection(None) : Public method
                 Input   : None
@@ -313,7 +317,21 @@ class connection:
         data = self.__establishSecret(data)
         if not data:
             return False
-        else:
-            self.__sendData(data)
-        self.listUsers()
+        self.__sendData(data)
         return True
+
+    def handleServerMessage(self):
+        serverObj = self.__recvData()
+        response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
+                                                      serverObj["IV"],serverObj["message"]))
+        if  response["Nonce"] not in self.__serverNonceHistory:
+            if response["message"] == "disconnect":
+                print "Server just kicked you out"
+                sys.exit(0)
+
+    def handleClientMessage(self,message):
+        message = message.strip()
+        if message == "list":
+            self.__listUsers()
+        else:
+            print "Unknown Message"
