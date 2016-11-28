@@ -46,7 +46,7 @@ class Connection:
         '''
         return self.__sessionKeyDict
 
-    def __nowOnlineResponse(self, senderObj):
+    def __nowOnlineResponse(self, senderObj, address):
         '''
             __nowOnlineResponse(None):
                 Input  : None
@@ -56,15 +56,21 @@ class Connection:
                 Purpose : When Client shows intent to connect Generate a challenge
                             and send it to server
         '''
+
+        if senderObj["user"] in self.__authDict:
+            self.__authDict.pop(senderObj["user"])
         rand = os.urandom(100)
         t = randint(30000,65536)
         sha = hashlib.sha256()
         sha.update(rand+str(t))
         guess = sha.digest()
         self.__authDict[senderObj["user"]] = Auth(str(t))
-        obj = {"message-type":"quiz","challange":rand,"answer":guess}
-        ret = pickle.dumps(obj)
-        return ret
+        response =  [ pickle.dumps({
+                "message-type"  : "quiz",
+                "challange"     : rand,
+                "answer"        : guess
+             }), address]
+        return response
 
     def __findPasswordHashForUser(self, user):
         '''
@@ -82,7 +88,7 @@ class Connection:
             else :
                 return False
             
-    def __challangeResponse(self, senderObj):
+    def __challangeResponse(self, senderObj, address):
         '''
             __challangeResponse(Object):
             Input  : Object {messageType:"quiz-response", encoded } (Response from server to challenge)
@@ -93,16 +99,16 @@ class Connection:
             Purpose : Send server public secret and augmented information
 
         '''
-
+        response = [False, address]
         if senderObj["user"] in self.__authDict:
             authInfo = self.__authDict[senderObj["user"]]
             if authInfo.getQuizz() == str(senderObj["answer"]):
-                return self.__challangeResponseHelper(senderObj, authInfo)
+                response =  self.__challangeResponseHelper(senderObj, authInfo, address)
             else :
                 self.__authDict.pop(senderObj["user"])
-        return False
+        return response
 
-    def __challangeResponseHelper(self, senderObj, authInfo):
+    def __challangeResponseHelper(self, senderObj, authInfo, address):
         '''
             __challangeResponseHelper(Object,Object):
                     Input   : The  Objectified stream data from user
@@ -112,6 +118,7 @@ class Connection:
                         {messageType:"initiageSecret", sha256(g^ab mod p + g^bw mod p), g^b mod p}
 
         '''
+        response = [False, address]
         pubKey = self.__diffiObj.gen_public_key()                                 # This is (gb mod p)
         sharedSecret = self.__diffiObj.gen_shared_key(long(senderObj["pubKey"]))  # This is (gab mop p)
         authInfo.setResponse()
@@ -122,12 +129,12 @@ class Connection:
             hash256 = self.__genShaX(hashlib.sha256(),str(gpowbw) + str(sharedSecret))
             hash384 = self.__genShaX(hashlib.sha384(),str(gpowbw) + str(sharedSecret))
             authInfo.setSha348(hash384)
-            return pickle.dumps({
+            response =  [pickle.dumps({
                 "messageType": "initiateSecret",
                 "hash": hash256,
                 "pubKey": pubKey,
-            })
-        return False
+            }), address]
+        return response
 
     def __genShaX(self, sha, message):
         '''
@@ -185,26 +192,56 @@ class Connection:
         hash = int(binascii.hexlify(sha.digest()), base=16)
         return hash
 
+    def __disconnectUser(self, user):
+        '''
+        __disconnectUser(String) : User Name to be disconnected
+            Input   : String
+            Output  : None
+            Purpose : Remove user connection
+        '''
+        userDetails = self.__sessionKeyDict[user]
+        print "Kicking out user " + user + " on ",userDetails[1]
+        iv = os.urandom(16)
+        message = self.__encryptSymetric(
+            user,
+             pickle.dumps(
+                 { "disconnect" : True,
+                   "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
+                }),iv)
+        self.__sessionKeyDict.pop(user)
+        return [pickle.dumps({
+            "message": message,
+            "IV": iv
+        }), userDetails[1]]
+
+    def __addUserToAuthDict(self, senderObj, address):
+        '''
+        __addUserToAuthDict(Object,tupple)
+        '''
+        response = [True, address]
+        if senderObj["user"] in self.__sessionKeyDict:
+            response = self.__disconnectUser(senderObj["user"])
+        self.__sessionKeyDict[senderObj["user"]] = [
+            self.__authDict[senderObj["user"]].getSharedSecret(),
+            address]
+        self.__authDict.pop(senderObj["user"])
+        return response
+
     def __completeAuth(self, senderObj, address):
         '''
-            __completeAuth(Object) :
-                Input  : Object (The sender Objectified stream data from user
+            __completeAuth(Object,tupple) :
+                Input  : Object,tupple (The sender Objectified stream data from user
                                 and Authentication info on server)
-                Output : False -> If sha384 doesnt match
-                        True -> Password is verified and session key is established
-
+                Output : Tupple
         '''
+        response = [True, address]
         if senderObj["user"] in self.__authDict:
-            if senderObj["hash"] == self.__authDict[senderObj["user"]].getSha384() :
+            if senderObj["hash"] == self.__authDict[senderObj["user"]].getSha384():
                 print "User " + senderObj["user"] + " Connected"
-                self.__sessionKeyDict[senderObj["user"]] = [
-                    self.__authDict[senderObj["user"]].getSharedSecret() ,
-                     address
-                ]
-                return True
-            else:
+                response = self.__addUserToAuthDict(senderObj, address)
+            else :
                 self.__authDict.pop(senderObj["user"])
-        return False
+        return response
 
     def __loadPickledData(self, message):
         '''
@@ -244,34 +281,33 @@ class Connection:
         response = False
         decryptedMessage = self.__parseStreamData(senderObj)
         if decryptedMessage["messageType"] == "now-online":
-            response = self.__nowOnlineResponse(decryptedMessage)
+            response = self.__nowOnlineResponse(decryptedMessage,address)
         elif decryptedMessage["messageType"] == "quiz-response":
-            response = self.__challangeResponse(decryptedMessage)
+            response = self.__challangeResponse(decryptedMessage,address)
         elif decryptedMessage["messageType"] == "complete":
             response = self.__completeAuth(decryptedMessage,address)
-        if not response:
-            self.__logErrors("Response from sender",address)
         return response
 
-    def __listUsers(self, senderObj):
+    def __listUsers(self, senderObj,address):
         '''
             __listUsers(None):
                 Input  : None
                 Output : Array string of list of all users connected to
                         server
         '''
+        response = [False, address]
         message = senderObj["message"]
-        if message["Nonce"] in self.__userNonce :
-            return False
-        self.__userNonce[message["Nonce"]] = True
-        iv = os.urandom(16)
-        message = self.__encryptSymetric( senderObj["user"],
-            pickle.dumps({"Users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
-        )
-        return pickle.dumps({
-                "message": message,
-                "IV":iv
-            })
+        if message["Nonce"] not in self.__userNonce :
+            self.__userNonce[message["Nonce"]] = True
+            iv = os.urandom(16)
+            message = self.__encryptSymetric( senderObj["user"],
+                pickle.dumps({"Users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
+            )
+            response =[pickle.dumps({
+                    "message": message,
+                    "IV":iv
+                }), address]
+        return response
 
     def __encryptSymetric(self, user, message, iv):
         '''
@@ -324,9 +360,9 @@ class Connection:
         )
         senderObj["message"] = message
         if message["request"] == "list":
-            return self.__listUsers(senderObj)
+            return self.__listUsers(senderObj, address)
         if message["request"] == "talk":
-            return self.__genKeyPair(senderObj)
+            return self.__genKeyPair(senderObj, address)
 
 
 

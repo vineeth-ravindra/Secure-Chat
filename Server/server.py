@@ -69,10 +69,13 @@ class server():
         print "Server running"
         while True:
             data , address = self.sock.recvfrom(4096)
-            response = connectionHandel.parseData(data,address)     # This method is used for Authenticating the user
-            if not isinstance(response, (int)):
-                self.__sendData(response,address)
-
+            response, address = connectionHandel.parseData(data, address)
+            try:
+                if not isinstance(response, (int)):
+                    self.__sendData(response, address)
+            except Exception as e:
+                print response
+                print e
 
     def signal_handler(self, signal, frame):
         '''
