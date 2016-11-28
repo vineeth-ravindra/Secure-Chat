@@ -1,4 +1,8 @@
 class Auth:
+    '''
+        Used by handelConnection object instance to
+        to store state of Authentication information
+    '''
     def __init__(self,quiz):
         self.__challenge = True
         self.__response = False

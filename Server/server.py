@@ -53,6 +53,7 @@ class server():
         try:
             self.sock.sendto(data, address)
         except Exception as e:
+            print data
             print "Error while sending data to",address
             print e
 
@@ -68,9 +69,10 @@ class server():
         print "Server running"
         while True:
             data , address = self.sock.recvfrom(4096)
-            data = connectionHandel.parseData(data,address)
-            if not isinstance(data, (int)):
-                self.__sendData(data,address)
+            response = connectionHandel.parseData(data,address)     # This method is used for Authenticating the user
+            if not isinstance(response, (int)):
+                self.__sendData(response,address)
+
 
     def signal_handler(self, signal, frame):
         '''

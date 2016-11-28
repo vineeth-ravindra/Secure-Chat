@@ -1,6 +1,7 @@
 import os,sys,DH,pickle,binascii
 import hashlib,zlib,json
 from Auth import Auth
+from symetric import symetric
 from random import randint
 from cryptography.hazmat.primitives import serialization,hashes
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -24,6 +25,7 @@ class Connection:
         self.__diffiObj = DH.DiffieHellman()
         self.__authDict      = {}
         self.__sessionKeyDict = {}
+        self.__userNonce = {}
         with open("private_key.pem", "rb") as key_file:
             try:
                 self.__privateKey = serialization.load_pem_private_key(
@@ -34,7 +36,16 @@ class Connection:
                 print "Error while Loading key " + file
                 sys.exit(0)
         
-        
+    def getSessionKeys(self):
+        '''
+            getSessionKeys(None):
+                Input   : None
+                Output  : Object
+                Purpose : Returns the session key of all clients authenticated
+                            with server
+        '''
+        return self.__sessionKeyDict
+
     def __nowOnlineResponse(self,senderObj):
         '''
             __nowOnlineResponse(None):
@@ -85,8 +96,6 @@ class Connection:
 
         if senderObj["user"] in self.__authDict:
             authInfo = self.__authDict[senderObj["user"]]
-            print "Server side quizz",authInfo.getQuizz()
-            print "Client Side", senderObj["answer"]
             if authInfo.getQuizz() == str(senderObj["answer"]):
                 return self.__challangeResponseHelper(senderObj, authInfo)
             else :
@@ -106,7 +115,7 @@ class Connection:
         pubKey = self.__diffiObj.gen_public_key()                                 # This is (gb mod p)
         sharedSecret = self.__diffiObj.gen_shared_key(long(senderObj["pubKey"]))  # This is (gab mop p)
         authInfo.setResponse()
-        authInfo.setSharedSecret(sharedSecret)
+        authInfo.setSharedSecret(str(sharedSecret)[0:16])
         userPassHash = self.__findPasswordHashForUser(senderObj["user"])
         if userPassHash:
             gpowbw = self.__diffiObj.gen_gpowxw(pubKey, userPassHash)
@@ -204,9 +213,10 @@ class Connection:
         try:
             return pickle.loads(message)
         except Exception as e:
+            print "Error while trying to unpickle data ",e
             return False
 
-    def __parseStreamData(self,message):
+    def __parseStreamData(self,senderObj):
         '''
             __parseStreamData(String):
                 Input   : String (Data on sock stream)
@@ -215,31 +225,117 @@ class Connection:
                             the data is unpickled, decrypted and converted
                              into object for further use
         '''
-        unPickledData = self.__loadPickledData(message)
-        if unPickledData is False:
-            self.__logErrors("Error while trying to dump data",('',''))
-        decryptedResponse = self.__decryptMessageUsingPrivateKey(unPickledData["message"])
+        decryptedResponse = self.__decryptMessageUsingPrivateKey(senderObj["message"])
         decryptedResponse = self.__loadPickledData(decryptedResponse)
-        decryptedResponse["user"] = unPickledData["user"]
+        decryptedResponse["user"] = senderObj["user"]
         return decryptedResponse
+
+    def __newConnection(self,senderObj,address):
+        '''
+            newConnection(Object,tupple) :
+                Input   : Object,tupple (Objectified data from sock and address)
+                Output  : String (data to be sent to server
+                Purpose : Parses the incoming message and  generate appropriate response
+                            to send to client. Used to establish new connection with client
+        '''
+        response = False
+        decryptedMessage = self.__parseStreamData(senderObj)
+        if decryptedMessage["messageType"] == "now-online":
+            response = self.__nowOnlineResponse(decryptedMessage)
+        elif decryptedMessage["messageType"] == "quiz-response":
+            response = self.__challangeResponse(decryptedMessage)
+        elif decryptedMessage["messageType"] == "complete":
+            response = self.__completeAuth(decryptedMessage)
+        if not response:
+            self.__logErrors("Response from sender",address)
+        return response
+
+    def __listUsers(self,senderObj):
+        '''
+            __listUsers(None):
+                Input  : None
+                Output : Array string of list of all users connected to
+                        server
+        '''
+        message = senderObj["message"]
+        if message["Nonce"] in self.__userNonce :
+            return False
+        self.__userNonce[message["Nonce"]] = True
+        iv = os.urandom(16)
+        message = self.__encryptSymetric( senderObj["user"],
+            pickle.dumps({"Users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
+        )
+        return pickle.dumps({
+                "message": message,
+                "IV":iv
+            })
+
+    def __encryptSymetric(self,user,message,iv):
+        '''
+            __encryptSymetric(String,String):
+                    Input  : String, String (The message to be Encryped and the IV
+                    Output : Encrypted message with session key
+                    Purpose : Encrypt message with session keys of client and server(Ksx)
+        '''
+
+        s = symetric(self.__sessionKeyDict[user])
+        encryptor = s.getEncryptor(iv)
+        return s.encryptMessage(message, encryptor)
+
+
+    def __genKeyPair(self,message):
+        '''
+                    __listUsers():
+
+        '''
+        if message["user"] in self.__sessionKeyDict \
+                and message["target"] in self.__sessionKeyDict:
+            if message["Nonce"] in self.__userNonce:
+                return False
+            iv = os.urandom(16)
+            message = self.__encryptSymetric(
+                pickle.dumps({"key":os.urandom(16),"Nonce":int(message[None])+1})
+            )
+            return pickle.dumps({
+                "message": message,
+                "IV":iv
+            })
+        else:
+            return False
+
+
+    def __establishedConnection(self,senderObj,address):
+        '''
+             __establishedConnection(Object):
+                    Input   : Object (Objectified data from sock )
+                    Output  :
+                    Purpose :
+        '''
+        user = senderObj["user"]
+        s = symetric(self.__sessionKeyDict[user])
+        decryptor = s.getDecryptor(senderObj["IV"])
+        message = pickle.loads (
+            s.decrypt(senderObj["message"],decryptor)
+        )
+        senderObj["message"] = message
+        if message["request"] == "list":
+            return self.__listUsers(senderObj)
+        if message["request"] == "talk":
+            return self.__genKeyPair(senderObj)
+
+
 
     def parseData(self,data,address):
         '''
             _parseData(String,tupple):
-                Input   : String,tupple (Input from socket and incoming address)
-                Output  : String (data to be sent to server
-                Purpose : Parses the incoming message and  generate appropriate response
-                            to send to client
-
+                    Input   : String,tupple (Input from socket and incoming address)
+                    Output  : None
+                    Purpose : Calls the appropriate method based on if the request is
+                                from a already authenticated client or if it is from
+                                a client requesting a new connection
         '''
-        decryptedResponse = self.__parseStreamData(data)
-        ret = False
-        if decryptedResponse["messageType"] == "now-online":
-            ret = self.__nowOnlineResponse(decryptedResponse)
-        elif decryptedResponse["messageType"] == "quiz-response":
-            ret = self.__challangeResponse(decryptedResponse)
-        elif decryptedResponse["messageType"] == "complete":
-            ret = self.__completeAuth(decryptedResponse)
-        if not ret:
-            self.__logErrors("Response from sender",address)
-        return ret
+        unPickledData = self.__loadPickledData(data)
+        if unPickledData["user"] in self.__sessionKeyDict:
+            return self.__establishedConnection(unPickledData,address)
+        else :
+            return self.__newConnection(unPickledData,address)

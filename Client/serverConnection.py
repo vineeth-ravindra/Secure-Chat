@@ -3,7 +3,8 @@ import pickle
 import hashlib
 import DH,binascii
 import sys,json
-import zlib
+import zlib,os
+from symetric import symetric
 from cryptography.hazmat.primitives import serialization,hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -194,7 +195,6 @@ class connection:
         """
         serverPubKey = long(data["pubKey"])
         self.__sharedSecret = self.__diffi.gen_shared_key(serverPubKey)
-        print "Shared Secret is ", self.__sharedSecret
         gpowbw =  self.__diffi.gen_gpowxw(serverPubKey,self.__passSecret)
         if self.__verifyPassword(gpowbw,self.__sharedSecret,long(data["hash"])) is False:
             return False
@@ -205,6 +205,7 @@ class connection:
             "user": self.__username,
             "message"   : objToEnc
         }
+        self.__sharedSecret = str(self.__sharedSecret)[0:16]
         return pickle.dumps(obj)
 
 
@@ -240,6 +241,56 @@ class connection:
             print "Invalid username password please try again"
             return False
 
+    def listUsers(self):
+        '''
+            listUsers(None) :
+                    Input  : None
+                    Output : List (List of all users connected to the server)
+                    Purpose : Gives the list of all users currently connected to server
+        '''
+
+        print type(self.__sharedSecret)
+        iv = os.urandom(16)
+        message  = self.__encryptSymetric(
+            self.__sharedSecret,iv,
+            pickle.dumps({"request": "list",
+                        "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
+                    }))
+        obj = {
+            "user":self.__username,
+            "message":message,
+            "IV":iv
+        }
+        self.__sendData(pickle.dumps(obj))
+        a = self.__recvData()
+        message = self.__decryptSymetric(self.__sharedSecret,a["IV"],a["message"])
+        message = pickle.loads(message)
+        print "Message is ", message
+
+
+    def __decryptSymetric(self,key,iv,message):
+        '''
+            __decryptSymetric(String,String):
+                    Input  : String, String (The  Encryped message and the IV
+                    Output : Decrypted message
+                    Purpose : Decrypt message sent by server
+        '''
+
+        s = symetric(key)
+        decryptor = s.getDecryptor(iv)
+        return s.decrypt(message, decryptor)
+
+    def __encryptSymetric(self,key,iv,message):
+        '''
+            __encryptSymetric(String,String):
+                    Input  : String, String (The message to be Encryped and the IV
+                    Output : Encrypted message with session key
+                    Purpose : Encrypt message with session keys of client and server(Ksx)
+        '''
+
+        s = symetric(key)
+        encryptor = s.getEncryptor(iv)
+        return s.encryptMessage(message, encryptor)
 
     def establishConnection(self):
         ''''establishConnection(None) : Public method
@@ -261,4 +312,5 @@ class connection:
             return False
         else:
             self.__sendData(data)
+        self.listUsers()
         return True
