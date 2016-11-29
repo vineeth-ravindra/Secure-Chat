@@ -2,12 +2,13 @@ import socket
 import pickle
 import hashlib
 import DH,binascii
-import sys,json
+import sys,json,select
 import zlib,os
 from symetric import symetric
 from cryptography.hazmat.primitives import serialization,hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
+
 
 class connection:
     '''
@@ -74,14 +75,14 @@ class connection:
             sys.exit(0)
 
 
-    def __sendData(self,message):
+    def __sendData(self,message,address = ('',2424)):
         ''' __sendData(String) :
                         Input   : String
                         Output  : None
                         Purpose : Sends the given String to the server
         '''
         try:
-            self.sock.sendto(message,('',2424))
+            self.sock.sendto(message, address)
         except Exception as e:
             print "Error while sending data",e
 
@@ -320,18 +321,69 @@ class connection:
         self.__sendData(data)
         return True
 
+    def __writeMessage(self,message):
+        ''' __writeMessage(String)
+                Input   : String (Message to be desplayed on console
+                Output  : None
+                Purpose : Print message on terminal
+        '''
+        sys.stdout.write(message)
+        sys.stdout.flush()
+
+    def __readFromConsole(self,message):
+        '''
+                __readFromConsole(String) :
+                    Input   : Message to be printed on screen
+                    Output  : The string entered on console
+                    Purpose : Write a message on console and read from same
+                '''
+        self.__writeMessage(message)
+        inputStreams = [sys.stdin]
+        ready_to_read, ready_to_write, in_error = \
+            select.select(inputStreams, [], [])
+        msg = sys.stdin.readline()
+        return msg.strip()
+
+
     def handleServerMessage(self):
         serverObj = self.__recvData()
         response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
                                                       serverObj["IV"],serverObj["message"]))
-        if  response["Nonce"] not in self.__serverNonceHistory:
+        if  "Nonce" in response and \
+                        response["Nonce"] not in self.__serverNonceHistory:
             if response["message"] == "disconnect":
                 print "Server just kicked you out"
                 sys.exit(0)
+            if response["message"] == "talkto":
+                print "Ginga lala"
 
     def handleClientMessage(self,message):
         message = message.strip()
         if message == "list":
             self.__listUsers()
+        if message == "talkto":
+            self.__talkToHost()
         else:
             print "Unknown Message"
+
+    def __talkToHost(self):
+        destHost = self.__readFromConsole("Whom do you wish to speak to :")
+        iv = os.urandom(16)
+        obj = pickle.dumps({
+            "user"    : destHost,
+            "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))
+        })
+        encryptedMessage = self.__encryptSymetric(self.__sharedSecret, iv, obj)
+        self.__sendData(
+            pickle.dumps({ "request": "talk",
+                          "message" : encryptedMessage,
+                          "IV"      : iv,
+                          "type"    : "sym",
+                          "user"    : self.__username,
+                      }))
+        message  = self.__recvData()
+        message = pickle.loads(self.__decryptSymetric(self.__sharedSecret,message["IV"],message["message"]))
+
+        self.__sendData(
+                pickle.dumps({"message": message["ticket"], "IV": message["IV"] }),
+            message["address"])

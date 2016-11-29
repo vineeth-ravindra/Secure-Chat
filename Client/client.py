@@ -52,7 +52,7 @@ class client:
         return "Usage \n**********\n " \
                "To message server type [ Server : <message> ]\n " \
                "To message client type [ Slient : <message> ]\n" \
-                "Message to Server \n1. list \n2. Logout" \
+                "Message to Server \n1. list \n2. Logout\n" \
                "**********\n"
 
 

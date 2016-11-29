@@ -322,25 +322,45 @@ class Connection:
         return s.encryptMessage(message, encryptor)
 
 
-    def __genKeyPair(self, message):
+    def __genKeyPair(self, senderObj, address):
         '''
-                    __listUsers():
+            __genKeyPair():
+        '''
+        encMessage = senderObj["message"]
+        if senderObj["user"] in self.__sessionKeyDict \
+                and encMessage["user"] in self.__sessionKeyDict:
 
-        '''
-        if message["user"] in self.__sessionKeyDict \
-                and message["target"] in self.__sessionKeyDict:
-            if message["Nonce"] in self.__userNonceHistor:
-                return False
+            if encMessage["Nonce"] in self.__userNonceHistor:
+                return [False, address]
             iv = os.urandom(16)
-            message = self.__encryptSymetric(
-                pickle.dumps({"key":os.urandom(16),"Nonce":int(message[None])+1})
-            )
-            return pickle.dumps({
-                "message": message,
-                "IV":iv
-            })
+            key = os.urandom(16)
+            ivin = os.urandom(16)
+
+            # Generate Token for B
+            token = self.__encryptSymetric(
+                encMessage["user"],pickle.dumps({
+                    "Key"       : key,
+                    "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16)),
+                    "message"   : "talkto",
+                    "address"   : self.__sessionKeyDict[senderObj["user"]][1]
+                }),
+                ivin)
+            # Encrypt Ticket and key to send to sender
+            encMessage = self.__encryptSymetric(senderObj["user"] ,
+                                    pickle.dumps({
+                                        "key": key,
+                                        "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16)),
+                                        "ticket": token,
+                                        "IV" :ivin,
+                                        "address": self.__sessionKeyDict[encMessage["user"]][1]
+                                    }), iv)
+
+            return [ pickle.dumps({
+                "message": encMessage,
+                "IV": iv
+            }), address]
         else:
-            return False
+            return [False, address]
 
 
     def __establishedConnection(self, senderObj, address):
@@ -355,13 +375,12 @@ class Connection:
             return False
         s = symetric(self.__sessionKeyDict[user][0])
         decryptor = s.getDecryptor(senderObj["IV"])
-        message = pickle.loads (
+        senderObj["message"] = pickle.loads (
             s.decrypt(senderObj["message"],decryptor)
         )
-        senderObj["message"] = message
-        if message["request"] == "list":
+        if senderObj["request"] == "list":
             return self.__listUsers(senderObj, address)
-        if message["request"] == "talk":
+        if senderObj["request"] == "talk":
             return self.__genKeyPair(senderObj, address)
 
 
