@@ -301,7 +301,7 @@ class Connection:
             self.__userNonceHistor[message["Nonce"]] = True
             iv = os.urandom(16)
             message = self.__encryptSymetric( senderObj["user"],
-                pickle.dumps({"Users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
+                pickle.dumps({"users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
             )
             response =[pickle.dumps({
                     "message": message,
@@ -342,7 +342,7 @@ class Connection:
                     "Key"       : key,
                     "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16)),
                     "message"   : "talkto",
-                    "address"   : self.__sessionKeyDict[senderObj["user"]][1]
+                    "user"   : [senderObj["user"], self.__sessionKeyDict[senderObj["user"]][1]]
                 }),
                 ivin)
             # Encrypt Ticket and key to send to sender
@@ -378,9 +378,9 @@ class Connection:
         senderObj["message"] = pickle.loads (
             s.decrypt(senderObj["message"],decryptor)
         )
-        if senderObj["request"] == "list":
+        if senderObj["message"]["request"] == "list":
             return self.__listUsers(senderObj, address)
-        if senderObj["request"] == "talk":
+        if senderObj["message"]["request"] == "talk":
             return self.__genKeyPair(senderObj, address)
 
 

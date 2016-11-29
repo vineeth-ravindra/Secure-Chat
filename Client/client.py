@@ -51,9 +51,9 @@ class client:
     def __flushManDocs(self):
         return "Usage \n**********\n " \
                "To message server type [ Server : <message> ]\n " \
-               "To message client type [ Slient : <message> ]\n" \
+               "To message client type [ Client : <message> ]\n" \
                 "Message to Server \n1. list \n2. Logout\n" \
-               "**********\n"
+               "**********\n\n"
 
 
     def __parseMessage(self, message):

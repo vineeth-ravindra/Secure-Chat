@@ -255,7 +255,6 @@ class connection:
                     Purpose : Gives the list of all users currently connected to server
         '''
 
-        print type(self.__sharedSecret)
         iv = os.urandom(16)
         message  = self.__encryptSymetric(
             self.__sharedSecret,iv,
@@ -272,7 +271,7 @@ class connection:
         a = self.__recvData()
         message = self.__decryptSymetric(self.__sharedSecret,a["IV"],a["message"])
         message = pickle.loads(message)
-        print "Message is ", message
+        print "Users conneted are ", message["users"]
 
 
     def __decryptSymetric(self,key,iv,message):
@@ -336,7 +335,7 @@ class connection:
                     Input   : Message to be printed on screen
                     Output  : The string entered on console
                     Purpose : Write a message on console and read from same
-                '''
+        '''
         self.__writeMessage(message)
         inputStreams = [sys.stdin]
         ready_to_read, ready_to_write, in_error = \
@@ -344,8 +343,31 @@ class connection:
         msg = sys.stdin.readline()
         return msg.strip()
 
+    def __setDestHostKey(self, message):
+        '''
+            __setDestHostKey(Object) :
+                Input   : Object (The objectified string after symmetrically decrypted with server session key)
+                Output  : None
+                Purpose : Set the session key to chat with remote host
+        '''
+        if message["Nonce"] in self.__serverNonceHistory:
+            return
+        self.__serverNonceHistory = message["Nonce"]
+        print message["user"]
+        choice = self.__readFromConsole("\nUser "+message["user"][0] +" Wishes to talk to you\n"
+                                                        "Want to accept Connection? (Y/N) ")
+        if choice.lower() == "y":
+            self.__writeMessage("\n User "+message["user"][0]+ " connected \n")
+            self.__destHostKey = [message["user"][0] , message["user"][0], message["Key"]]     # Username , Address, Key
+
 
     def handleServerMessage(self):
+        '''
+            handleServerMessage(None)
+                Input   : None
+                Output  : None
+                Purpose : Handle clients requests to talk to server
+        '''
         serverObj = self.__recvData()
         response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
                                                       serverObj["IV"],serverObj["message"]))
@@ -355,27 +377,25 @@ class connection:
                 print "Server just kicked you out"
                 sys.exit(0)
             if response["message"] == "talkto":
-                print "Ginga lala"
-
-    def handleClientMessage(self,message):
-        message = message.strip()
-        if message == "list":
-            self.__listUsers()
-        if message == "talkto":
-            self.__talkToHost()
-        else:
-            print "Unknown Message"
+                self.__setDestHostKey(response)
 
     def __talkToHost(self):
+        '''
+            __talkToHost(None) :
+                Input   : (None)
+                Output  : (None)
+                Purpose : Request Session key to server to talk to remote host and send same to remote host
+        '''
         destHost = self.__readFromConsole("Whom do you wish to speak to :")
         iv = os.urandom(16)
         obj = pickle.dumps({
+            "request": "talk",
             "user"    : destHost,
             "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))
         })
         encryptedMessage = self.__encryptSymetric(self.__sharedSecret, iv, obj)
         self.__sendData(
-            pickle.dumps({ "request": "talk",
+            pickle.dumps({
                           "message" : encryptedMessage,
                           "IV"      : iv,
                           "type"    : "sym",
@@ -387,3 +407,20 @@ class connection:
         self.__sendData(
                 pickle.dumps({"message": message["ticket"], "IV": message["IV"] }),
             message["address"])
+
+    def handleClientMessage(self,message):
+        '''
+            handleClientMessage(String):
+                Input  : String
+                Output : None
+                Purpose : Parse the users input from the terminal and perform appropriate
+                            function to communicate with server
+        '''
+        message = message.strip()
+        if message == "list":
+            self.__listUsers()
+        elif message == "talkto":
+            self.__talkToHost()
+        else:
+            print "Unknown Message"
+
