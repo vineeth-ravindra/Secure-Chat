@@ -348,7 +348,7 @@ class Connection:
             # Encrypt Ticket and key to send to sender
             encMessage = self.__encryptSymetric(senderObj["user"] ,
                                     pickle.dumps({
-                                        "key": key,
+                                        "Key": key,
                                         "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16)),
                                         "ticket": token,
                                         "IV" :ivin,

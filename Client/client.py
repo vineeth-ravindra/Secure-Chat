@@ -117,7 +117,7 @@ class client:
                     if msg and msg[0]:
                         self.__serverObj.handleClientMessage(msg[1])
                     elif msg and not msg[0]:
-                        print "Client Needs to do some work"
+                        self.__serverObj.sendMessageToClient(msg[1])
 
 if __name__ == "__main__":
     c = client()

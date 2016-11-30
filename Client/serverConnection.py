@@ -30,6 +30,7 @@ class connection:
         '''
         self.__readConfigFile()
         self.__username = username
+        self.__destHostKey = {}                     # {Address,Key}
         self.__convertPasswordToSecret(password)
         self.__diffi = DH.DiffieHellman()
         self.__serverNonceHistory = {}
@@ -358,7 +359,27 @@ class connection:
                                                         "Want to accept Connection? (Y/N) ")
         if choice.lower() == "y":
             self.__writeMessage("\n User "+message["user"][0]+ " connected \n")
-            self.__destHostKey = [message["user"][0] , message["user"][0], message["Key"]]     # Username , Address, Key
+            self.__destHostKey[message["user"][0]] = [message["user"][1], message["Key"]]     #     Address, Key
+        if choice.lower() == "n":
+            self.___disconnectClient("refused",message["Key"],message["user"][1])
+
+
+    def __chatMessage(self,serverObj):
+        '''
+        __chatMessage(Object)
+            purpose : Handle chat message
+        '''
+        if serverObj["message"] == "client":
+            x = self.__destHostKey[self.__destHostKey.keys()[0]][1]  # TODO : Need to remove the first dict element
+            clientMessage = self.__decryptSymetric(x,serverObj["IV"],serverObj["data"])
+            clientMessage = pickle.loads(clientMessage)
+            if clientMessage["message"] == "chat":
+                self.__writeMessage("\n"+clientMessage["user"]+": "+clientMessage["chat"]+"\n")  # Todo need to change this here as well
+            if clientMessage["message"] == "refused":
+                self.__writeMessage("Connection was refused by "+clientMessage["user"]+"\n")
+                if clientMessage["user"] in self.__destHostKey:
+                    self.__destHostKey.pop(clientMessage["user"])
+
 
 
     def handleServerMessage(self):
@@ -369,8 +390,11 @@ class connection:
                 Purpose : Handle clients requests to talk to server
         '''
         serverObj = self.__recvData()
-        response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
+        try:
+            response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
                                                       serverObj["IV"],serverObj["message"]))
+        except Exception as e:
+            return self.__chatMessage(serverObj)
         if  "Nonce" in response and \
                         response["Nonce"] not in self.__serverNonceHistory:
             if response["message"] == "disconnect":
@@ -378,6 +402,25 @@ class connection:
                 sys.exit(0)
             if response["message"] == "talkto":
                 self.__setDestHostKey(response)
+
+    def ___disconnectClient(self,message,key,address):
+        '''
+            ___disconnectClient(String):
+                Input   :
+                Output  :
+                Purpose :
+
+        '''
+        iv = os.urandom(16)
+        obj = self.__encryptSymetric(key, iv,
+                                     pickle.dumps({"message": message,"user" : self.__username,}))
+        self.__sendData(pickle.dumps({
+            "message"   : "client",
+            "data"      : obj,
+            "IV"        : iv,
+            "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))},
+        ), address)
+
 
     def __talkToHost(self):
         '''
@@ -394,6 +437,7 @@ class connection:
             "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))
         })
         encryptedMessage = self.__encryptSymetric(self.__sharedSecret, iv, obj)
+        # Send data to server : Request Ticket from server
         self.__sendData(
             pickle.dumps({
                           "message" : encryptedMessage,
@@ -403,10 +447,12 @@ class connection:
                       }))
         message  = self.__recvData()
         message = pickle.loads(self.__decryptSymetric(self.__sharedSecret,message["IV"],message["message"]))
-
+        # Send data to Client : Send token received from client
         self.__sendData(
                 pickle.dumps({"message": message["ticket"], "IV": message["IV"] }),
             message["address"])
+
+        self.__destHostKey[destHost] = [message["address"], message["Key"]]                 # Username , Address, Key
 
     def handleClientMessage(self,message):
         '''
@@ -424,3 +470,25 @@ class connection:
         else:
             print "Unknown Message"
 
+    def sendMessageToClient(self,message):
+        '''
+            sendMessageToClient(String):
+                Input   : String
+                Output  : None
+                Purpose : Send chat message to client
+        '''
+
+        iv = os.urandom(16)
+        if not self.__destHostKey:
+            self.__writeMessage("No client connected")
+            return
+        x = self.__destHostKey[self.__destHostKey.keys()[0]]  # TODO : Need to remove the first dict element
+        obj = self.__encryptSymetric(x[1],iv,
+                                     pickle.dumps({"message":"chat", "chat":message, "user":self.__username}))
+        x = self.__destHostKey[self.__destHostKey.keys()[0]][0]     #TODO : Need to change this as well
+        self.__sendData(pickle.dumps({
+                "message":"client",
+                "IV":iv,
+                "data":obj,
+                "Nonce":str(int(binascii.hexlify(os.urandom(8)), base=16))}
+            ), x)
