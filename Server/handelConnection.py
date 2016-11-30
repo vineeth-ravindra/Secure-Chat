@@ -362,6 +362,21 @@ class Connection:
         else:
             return [False, address]
 
+    def __xxx(self, senderObj, address):
+        '''
+
+        :param senderObj:
+        :param address:
+        :return:
+        '''
+        message = senderObj["message"]
+        if message["Nonce"] not in self.__userNonceHistor:
+            if senderObj["user"] in self.__sessionKeyDict:
+                self.__sessionKeyDict.pop(senderObj["user"])
+                self.__userNonceHistor[message["Nonce"]] = True
+                print "\nUser " + senderObj["user"] + " Just left\n"
+                print self.__sessionKeyDict
+        return True, ""
 
     def __establishedConnection(self, senderObj, address):
         '''
@@ -380,8 +395,10 @@ class Connection:
         )
         if senderObj["message"]["request"] == "list":
             return self.__listUsers(senderObj, address)
-        if senderObj["message"]["request"] == "talk":
+        elif senderObj["message"]["request"] == "talk":
             return self.__genKeyPair(senderObj, address)
+        elif senderObj["message"]["request"] == "logout":
+            return self.__xxx(senderObj, address)
 
 
 

@@ -382,6 +382,11 @@ class connection:
                 if clientMessage["user"] in self.__destHostKey:
                     self.__destHostKey.pop(clientMessage["user"])
                     self.__addressUserNameMap.pop(address)
+            if clientMessage["message"] == "logout":
+                self.__writeMessage(clientMessage["user"]+" Just left\n")
+                if clientMessage["user"] in self.__destHostKey:
+                    self.__destHostKey.pop(clientMessage["user"])
+                    self.__addressUserNameMap.pop(address)
 
 
 
@@ -457,6 +462,26 @@ class connection:
         self.__addressUserNameMap[message["address"]] = destHost
         self.__destHostKey[destHost] = [message["address"], message["Key"]]                 # Username , Address, Key
 
+
+    def logout(self):
+        for user in self.__destHostKey :
+            self.___disconnectClient("logout",self.__destHostKey[user][1],self.__destHostKey[user][0])
+        iv = os.urandom(16)
+        message = self.__encryptSymetric(
+            self.__sharedSecret, iv,
+            pickle.dumps({"request": "logout",
+                          "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
+                          }))
+        obj = {
+            "user": self.__username,
+            "message": message,
+            "IV": iv,
+            "type": "sym"
+        }
+        self.__sendData(pickle.dumps(obj))
+        self.__writeMessage("It was a pleasure having you here\nGet back soon:)\n")
+        sys.exit(0)
+
     def handleClientMessage(self,message):
         '''
             handleClientMessage(String):
@@ -470,6 +495,8 @@ class connection:
             self.__listUsers()
         elif message == "connect":
             self.__talkToHost()
+        elif message == "logout":
+            self.logout()
         else:
             print "Unknown Message"
 
