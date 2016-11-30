@@ -49,11 +49,11 @@ class client:
         return msg
 
     def __flushManDocs(self):
-        return "Usage \n**********\n " \
-               "To message server type [ Server : <message> ]\n " \
-               "To message client type [ Client : <message> ]\n" \
-                "Message to Server \n1. list \n2. Logout\n" \
-               "**********\n\n"
+        return "\n1. To List active users users : list" \
+               "\n2. To connect to user :connect" \
+               "\n3. To Send messsage : send <username> message" \
+               "\n4. See usage : man" \
+               "\n**********\n\n"
 
 
     def __parseMessage(self, message):
@@ -78,15 +78,21 @@ class client:
                     Output : List -> If the message is recognizable
                             Boolean -> Message is unknown
         '''
-        message = message.split(":")
-        if message[0] == "man":
+        message = message.split(" ")
+        if message[0] == "list":
+            return [True, "list"]
+        elif message[0] == "connect":
+            return [True, "connect"]
+        elif message[0] == "send":
+            if len(message) > 1 and message is not "":
+                return [False, message[1:]]
+            else:
+                self.__writeMessage("\nPlease enter valid message\n")
+        elif message[0] == "man":
             return self.__flushManDocs()
-        elif message[0] == "server":
-            return [True, message[1]]
-        elif message[0] == "client":
-            return [False, message[1]]
         else:
-            return "Unknown Instruction\nPlease type man for usage instructions\n"
+            return ""
+
 
 
     def run(self):
@@ -99,6 +105,7 @@ class client:
                           Tries to establish connection with server, authenticates user
                           if user is authenticated on specific port to active connections
         '''
+        self.__writeMessage(self.__flushManDocs())
         self.__serverObj = self.__authenticateUser()
 
         while True:
