@@ -33,7 +33,7 @@ class connection:
         self.__destHostKey = {}                     # {Address,Key}
         self.__convertPasswordToSecret(password)
         self.__diffi = DH.DiffieHellman()
-        self.__serverNonceHistory = {}
+        self.__serverNonceHistory = []
         self.__addressUserNameMap = {}
         self.__pubKey = self.__diffi.gen_public_key()
 
@@ -308,7 +308,7 @@ class connection:
                 Purpose : Control to initial connection with server
 
         '''
-        # Step 1 : Say Hello 
+        # Step 1 : Say Hello
         self.__sayHello()
         data, address = self.__recvData()
         # Step 2 : Send Response to challange
@@ -354,7 +354,7 @@ class connection:
         '''
         if message["Nonce"] in self.__serverNonceHistory:
             return
-        self.__serverNonceHistory = message["Nonce"]
+        self.__serverNonceHistory.append(message["Nonce"])
         print message["user"]
         choice = self.__readFromConsole("\nUser "+message["user"][0] +" Wishes to talk to you\n"
                                                         "Want to accept Connection? (Y/N) ")
@@ -365,8 +365,32 @@ class connection:
         if choice.lower() == "n":
             self.___disconnectClient("refused",message["Key"],message["user"][1])
 
+    def __connectionTeaerDown(self,clientMessage,address,message):
+        '''
+            __connectionTeaerDown(Object,tupple,String):
+                Input   : The Object sent by client, The address of Host, and message to be logged on terminal
+                Output  : None
+                Purpose : Tare down a connection
+        '''
+        if clientMessage["Nonce"] not in self.__serverNonceHistory:
+            self.__serverNonceHistory.append(clientMessage["Nonce"])
+            self.__writeMessage(message)
+            if clientMessage["user"] in self.__destHostKey:
+                self.__destHostKey.pop(clientMessage["user"])
+                self.__addressUserNameMap.pop(address)
 
-    def __chatMessage(self, serverObj, address):
+    def __printChatMessage(self,clientMessage):
+        '''
+            __printChatMessage(Object):
+            Input   : Object received from client
+            Output  :   None
+            Purpose : Print the chat message onto terminal
+        '''
+        if clientMessage["Nonce"] not in self.__serverNonceHistory:
+            self.__writeMessage("\n" + clientMessage["user"] + ": " + clientMessage["chat"] + "\n")
+            self.__serverNonceHistory.append(clientMessage["Nonce"])
+
+    def __chatSessionMessages(self, serverObj, address):
         '''
         __chatMessage(Object)
             purpose : Handle chat message
@@ -376,18 +400,13 @@ class connection:
                                                    serverObj["IV"],serverObj["data"])
             clientMessage = pickle.loads(clientMessage)
             if clientMessage["message"] == "chat":
-                self.__writeMessage("\n"+clientMessage["user"]+": "+clientMessage["chat"]+"\n")
-            if clientMessage["message"] == "refused":
-                self.__writeMessage("Connection was refused by "+clientMessage["user"]+"\n")
-                if clientMessage["user"] in self.__destHostKey:
-                    self.__destHostKey.pop(clientMessage["user"])
-                    self.__addressUserNameMap.pop(address)
-            if clientMessage["message"] == "logout":
-                self.__writeMessage(clientMessage["user"]+" Just left\n")
-                if clientMessage["user"] in self.__destHostKey:
-                    self.__destHostKey.pop(clientMessage["user"])
-                    self.__addressUserNameMap.pop(address)
-
+                self.__printChatMessage(clientMessage)
+            elif clientMessage["message"] == "refused":
+                self.__connectionTeaerDown(clientMessage,address,
+                                           "Connection was refused by " + clientMessage["user"] + "\n")
+            elif clientMessage["message"] == "logout":
+                self.__connectionTeaerDown(clientMessage, address,
+                                           clientMessage["user"]+" Just left\n")
 
 
     def handleServerMessage(self):
@@ -402,7 +421,7 @@ class connection:
             response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
                                                       serverObj["IV"],serverObj["message"]))
         except Exception as e:
-            return self.__chatMessage(serverObj, address)
+            return self.__chatSessionMessages(serverObj, address)
         if  "Nonce" in response and \
                         response["Nonce"] not in self.__serverNonceHistory:
             if response["message"] == "disconnect":
@@ -413,20 +432,25 @@ class connection:
 
     def ___disconnectClient(self,message,key,address):
         '''
-            ___disconnectClient(String):
-                Input   :
-                Output  :
-                Purpose :
+            ___disconnectClient(String,String,tupple):
+                Input   :  The message to be sent for disconnection, The Key to encrypt message,
+                            Address to whom the message is to be send
+                Output  : None
+                Purpose : Disconnect connected client
 
         '''
         iv = os.urandom(16)
         obj = self.__encryptSymetric(key, iv,
-                                     pickle.dumps({"message": message,"user" : self.__username,}))
+                                     pickle.dumps({
+                                         "message"  : message,
+                                         "user"     : self.__username,
+                                         "Nonce"    : str(int(binascii.hexlify(os.urandom(8)), base=16))
+                                     }))
         self.__sendData(pickle.dumps({
             "message"   : "client",
             "data"      : obj,
             "IV"        : iv,
-            "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))},
+        },
         ), address)
 
 
@@ -508,16 +532,21 @@ class connection:
                 Purpose : Send chat message to client
         '''
         user = message[0]
-        message = message[1]
+        message = " ".join(message[1:])
         iv = os.urandom(16)
         if not self.__destHostKey or user not in self.__destHostKey:
             self.__writeMessage("Client not connected\n")
             return
         obj = self.__encryptSymetric(self.__destHostKey[user][1] ,iv,
-                                     pickle.dumps({"message":"chat", "chat":message, "user":self.__username}))
+                                     pickle.dumps({
+                                         "message":"chat",
+                                         "chat"   :message,
+                                         "user"   :self.__username,
+                                         "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
+                                       }))
         self.__sendData(pickle.dumps({
                 "message"   :   "client",
                 "IV"        :   iv,
                 "data"      :   obj,
-                "Nonce"     :   str(int(binascii.hexlify(os.urandom(8)), base=16))}
+                }
             ), self.__destHostKey[user][0])

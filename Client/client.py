@@ -1,6 +1,5 @@
-import sys, types
+import sys,select,signal
 import serverConnection
-import select
 
 class client:
     def __init__(self):
@@ -95,7 +94,9 @@ class client:
         else:
             return ""
 
-
+    def signal_handler(self,signal,frame):
+        self.__serverObj.logout()
+        sys.exit(0)
 
     def run(self):
         '''
@@ -130,4 +131,5 @@ class client:
 
 if __name__ == "__main__":
     c = client()
+    signal.signal(signal.SIGINT, c.signal_handler)
     c.run()
