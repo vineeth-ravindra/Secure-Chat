@@ -1,5 +1,5 @@
 import sys,socket,signal
-import handelConnection
+import serverConnection
 
 class server():
     '''
@@ -39,12 +39,11 @@ class server():
                               interrupt (ie. Ctrl+C  signal)
 
         '''
-        self.sock.shutdown(socket.SHUT_RDWR)
         self.sock.close()
 
     def __sendData(self,data,address):
         '''
-            __sendData(String,tupple):
+            __sendData(String,tuple):
                 Input   : String to be sent, Address to whom to be sent
                 Output  : None
                 Purpose : Send message to client
@@ -77,12 +76,16 @@ class server():
                 print response
                 print e
 
+    def signal_handler(self,signal,frame):
+        self.__closeSocket()
+        sys.exit(0)
+
     def signal_handler(self, signal, frame):
         '''
             signal_handler(signal, frame):
                 Input   : Interrupt signal
                 Output  : None
-                Purpose : Close server socket
+                Purpose : Close server socket and exit
 
         '''
         print('You pressed Ctrl+C!')
@@ -90,6 +93,7 @@ class server():
         sys.exit(0)
 
 if __name__ == "__main__":
-    c = handelConnection.Connection()
+    c = serverConnection.Connection()
     s = server()
+    signal.signal(signal.SIGINT, s.signal_handler)
     s.run(c)

@@ -19,14 +19,14 @@ class Connection:
            __init__(None):
                 Input  : None
                 Output : None
-                Purpose : 1) Initialise Connection object
+                Purpose : 1) Initialise objects to maintain connection state
                           2) Read server private key for future use
         '''
         self.__diffiObj = DH.DiffieHellman()
-        self.__authDict      = {}
-        self.__sessionKeyDict = {}
-        self.__userNonceHistor = {}
-        self.__connectedClients = {}
+        self.__authDict         = {}
+        self.__sessionKeyDict   = {}            # username : [key,address]
+        self.__userNonceHistor  = {}            # nonce    : bool
+        self.__connectedClients = {}            # address  : username
         with open("private_key.pem", "rb") as key_file:
             try:
                 self.__privateKey = serialization.load_pem_private_key(
@@ -76,11 +76,11 @@ class Connection:
     def __findPasswordHashForUser(self, user):
         '''
             __findPasswordHashForUser(String):
-                Input   :   (String) UserName
+                Input   :   The user name
                 Output  :   False  -> If username not found
                             String -> Password hash
-                Purpose :   Given a username searches if the user is registerd
-                            and returns the username
+                Purpose :   Given a username searches if the user is registered
+                            and returns the username and the password hash of user
         '''
         with open("SERVER.conf") as json_file:
             json_data = json.load(json_file)
@@ -94,7 +94,7 @@ class Connection:
             __challangeResponse(Object):
             Input  : Object {messageType:"quiz-response", encoded } (Response from server to challenge)
                             encoded -> {g^a mod p,response}s
-            Output : String
+            Output : String (The response to be sent to client)
             Message format :
                         {messageType:"initiageSecret", sha256(g^ab mod p + g^bw mod p), g^b mod p}
             Purpose : Send server public secret and augmented information
@@ -111,9 +111,9 @@ class Connection:
 
     def __challangeResponseHelper(self, senderObj, authInfo, address):
         '''
-            __challangeResponseHelper(Object,Object):
-                    Input   : The  Objectified stream data from user
-                                and Authentication info on server
+            __challangeResponseHelper(Object,Object,tuple):
+                    Input   : The  Objectified stream data from user,
+                                 Authentication info on server and address of incoming connection
                     Output : String (Data to be send on wire)
                      Message format :
                         {messageType:"initiageSecret", sha256(g^ab mod p + g^bw mod p), g^b mod p}
@@ -140,7 +140,7 @@ class Connection:
     def __genShaX(self, sha, message):
         '''
             __genShaX(Object,String):
-                    Input   : Object,Strint (THe sha object ie.sha256,384,512 and the message
+                    Input   : Object,String (THe sha object ie.sha256,384,512 and the message
                                             to be encrypted)
                     Output  : String (Returns the digest of the message)
 
@@ -151,8 +151,8 @@ class Connection:
     def __decryptMessageUsingPrivateKey(self, message):
         '''
             __decryptMessageUsingPrivateKey(String):
-                    Input   : String
-                    Output  : String
+                    Input   : The string to be decrypted
+                    Output  : String (The decrypted String)
                     Purpose : Decrypt data encrypted with server public key
 
         '''
@@ -170,8 +170,8 @@ class Connection:
 
     def __logErrors(self,errTime,address):
         '''
-            __logErrors(String,tupple):
-                Input   : String , Tupple(address)
+            __logErrors(String,tuple):
+                Input   : String , Tuple(address)
                 Output  : None
                 Purpose : Log errors on console
 
@@ -195,10 +195,10 @@ class Connection:
 
     def __disconnectUser(self, user):
         '''
-        __disconnectUser(String) : User Name to be disconnected
-            Input   : String
-            Output  : None
-            Purpose : Remove user connection
+        __disconnectUser(String) :
+            Input   :   User Name to be disconnected
+            Output  :   None
+            Purpose :   Remove user connection
         '''
         userDetails = self.__sessionKeyDict[user]
         print "Kicking out user " + user + " on ",userDetails[1]
@@ -218,7 +218,12 @@ class Connection:
 
     def __addUserToAuthDict(self, senderObj, address):
         '''
-        __addUserToAuthDict(Object,tupple)
+        __addUserToAuthDict(Object,tuple) :
+                Input   : The objectified string received from client and the address from
+                            where it was received
+                Output  : The message to be sent to client
+                Purpose : To complete user authentication and store users session key for future
+                            use
         '''
         response = [True, address]
         if senderObj["user"] in self.__sessionKeyDict:
@@ -231,15 +236,17 @@ class Connection:
 
     def __completeAuth(self, senderObj, address):
         '''
-            __completeAuth(Object,tupple) :
-                Input  : Object,tupple (The sender Objectified stream data from user
+            __completeAuth(Object,tuple) :
+                Input   : Object,tuple (The sender Objectified stream data from user
                                 and Authentication info on server)
-                Output : Tupple
+                Output  : Tuple
+                purpose : To complete user authentication and store users session key for future
+                            use also kick out other users connected with same credentials
         '''
         response = [True, address]
         if senderObj["user"] in self.__authDict:
             if senderObj["hash"] == self.__authDict[senderObj["user"]].getSha384():
-                print "User " + senderObj["user"] + " Connected" + str(address)
+                print "User " + senderObj["user"] + " Connected on " + str(address)
                 response = self.__addUserToAuthDict(senderObj, address)
                 self.__connectedClients[address] = senderObj["user"]
             else :
@@ -249,8 +256,8 @@ class Connection:
     def __loadPickledData(self, message):
         '''
             __loadPickledData(String):
-                Input  : String (Stream data from socket)
-                Output : Object
+                Input   : String (Stream data from socket)
+                Output  : Object
                 Purpose : Convert the stream data to object
         '''
         try:
@@ -261,11 +268,11 @@ class Connection:
 
     def __parseStreamData(self, senderObj):
         '''
-            __parseStreamData(String):
-                Input   : String (Data on sock stream)
-                Output  : Obj
+            __parseStreamData(Object):
+                Input   : Objectified string received on socket
+                Output  : Object (The objectified message after decryption)
                 Purpose : Given the data sent by the client on the wire
-                            the data is unpickled, decrypted and converted
+                            the data is un pickled, decrypted and converted
                              into object for further use
         '''
         decryptedResponse = self.__decryptMessageUsingPrivateKey(senderObj["message"])
@@ -274,9 +281,9 @@ class Connection:
 
     def __newConnection(self, senderObj, address):
         '''
-            newConnection(Object,tupple) :
-                Input   : Object,tupple (Objectified data from sock and address)
-                Output  : String (data to be sent to server
+            newConnection(Object,tuple) :
+                Input   : Objectified data from sock and address
+                Output  : String (data to be sent to server)
                 Purpose : Parses the incoming message and  generate appropriate response
                             to send to client. Used to establish new connection with client
         '''
@@ -293,9 +300,10 @@ class Connection:
     def __listUsers(self, senderObj,address):
         '''
             __listUsers(None):
-                Input  : None
-                Output : Array string of list of all users connected to
+                Input   : None
+                Output  : Array string of list of all users connected to
                         server
+                Purpose : To send response to users list request
         '''
         response = [False, address]
         message = senderObj["message"]
@@ -313,8 +321,8 @@ class Connection:
 
     def __encryptSymetric(self, user, message, iv):
         '''
-            __encryptSymetric(String,String):
-                    Input  : String, String (The message to be Encryped and the IV
+            __encryptSymetric(Object,String,String):
+                    Input  : String, String, String (The the users key info, message to be encrypted and the IV)
                     Output : Encrypted message with session key
                     Purpose : Encrypt message with session keys of client and server(Ksx)
         '''
@@ -326,10 +334,10 @@ class Connection:
 
     def __genKeyPair(self, senderObj, address):
         '''
-            __genKeyPair(Object, tupple):
+            __genKeyPair(Object, tuple):
                 Input   : The objectified string received on socket and the address
                             of the incoming connection
-                Output  : [String,tuppe] -> The message to be sent and the address
+                Output  : [String,tuple] -> The message to be sent and the address
                             to whom its to be sent
                 Purpose : Generate a session key for two hosts to communicate
         '''
@@ -371,7 +379,7 @@ class Connection:
 
     def __userLogout(self, senderObj, address):
         '''
-            __userLogout(Object,Tupple)
+            __userLogout(Object,tuple)
                 Input       : Objectified string from user, address from where connection was received
                 Output      : Boolean
                 Purpose     : Safely remove a user from the __sessionKeyDict object
@@ -387,7 +395,7 @@ class Connection:
 
     def __findUserFromAddress(self, address):
         '''
-            __findUserFromAddress(tupple)
+            __findUserFromAddress(tuple)
             Input   :  Address of incoming request
             Output  : String, Boolean
                         String -> If user name is present
@@ -401,8 +409,8 @@ class Connection:
         '''
              __establishedConnection(Object):
                     Input   : Object (Objectified data from sock )
-                    Output  :
-                    Purpose :
+                    Output  : The message to be sent to client
+                    Purpose : Parse the input message from client and generate appropriate message
         '''
         user = self.__findUserFromAddress(address)
         if user is False:
@@ -423,8 +431,8 @@ class Connection:
 
     def parseData(self, data, address):
         '''
-            _parseData(String,tupple):
-                    Input   : String,tupple (Input from socket and incoming address)
+            _parseData(String,tuple):
+                    Input   : String,tuple (Input from socket and incoming address)
                     Output  : None
                     Purpose : Calls the appropriate method based on if the request is
                                 from a already authenticated client or if it is from
