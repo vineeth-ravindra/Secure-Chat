@@ -79,7 +79,7 @@ class connection:
 
     def __sendData(self,message,address = ('',2424)):
         ''' __sendData(String) :
-                        Input   : String
+                        Input   : String(Message to be sent to server)
                         Output  : None
                         Purpose : Sends the given String to the server
         '''
@@ -93,7 +93,7 @@ class connection:
                         Input   : None
                         Output  : None
                         Purpose : Receives data from the server once data becomes
-                                    avilable on socket
+                                    available on socket
         '''
         data = None
         try:
@@ -108,7 +108,7 @@ class connection:
 
     def __encryptMessageWithServerPubKey(self, message):
         ''' __encryptMessageWithServerPubKey(String) :
-                        Input   : String
+                        Input   : Message to be encrypted with public key of server
                         Output  : String (encrypted)
                         Purpose : Given a string encrypts the data with the servers
                                    Public Key and returns the encrypted data
@@ -150,7 +150,7 @@ class connection:
         }
         self.__sendData(pickle.dumps(encodedObject))
 
-    def __puzzleSolve(self,data):
+    def __puzzleSolve(self, data):
         ''' __puzzleSolve(String):
                 Input  : String (The response from server when requested to initiate connection)
                 Output :    Object -> { username ,
@@ -176,7 +176,7 @@ class connection:
                })
         return False
 
-    def __convertPasswordToSecret(self,password):
+    def __convertPasswordToSecret(self, password):
         ''' __convertPasswordToSecret (String):
                            Input   : Password of User
                            Output  : None
@@ -194,7 +194,7 @@ class connection:
         password = None
 
 
-    def __establishSecret(self,data):
+    def __establishSecret(self, data):
         """__establishSecret(String):
             Input   : String (Response from server with the for the sent response,
                       Contains servers public Key Diffie Hellman key
@@ -270,8 +270,8 @@ class connection:
     def __listUsers(self):
         '''
             listUsers(None) :
-                    Input  : None
-                    Output : List (List of all users connected to the server)
+                    Input   : None
+                    Output  : List (List of all users connected to the server)
                     Purpose : Gives the list of all users currently connected to server
         '''
 
@@ -299,7 +299,7 @@ class connection:
         print "Users connected are ", message["users"]
 
 
-    def __decryptSymetric(self,key,iv,message):
+    def __decryptSymetric(self, key, iv, message):
         '''
             __decryptSymetric(String,String):
                     Input  : String, String (The  Encryped message and the IV
@@ -311,10 +311,10 @@ class connection:
         decryptor = s.getDecryptor(iv)
         return s.decrypt(message, decryptor)
 
-    def __encryptSymetric(self,key,iv,message):
+    def __encryptSymetric(self, key, iv, message):
         '''
             __encryptSymetric(String,String):
-                    Input  : String, String (The message to be Encryped and the IV
+                    Input  : String, String (Key, message to be encrypted and the IV)
                     Output : Encrypted message with session key
                     Purpose : Encrypt message with session keys of client and server(Ksx)
         '''
@@ -349,7 +349,7 @@ class connection:
         self.__sendData(data)
         return True
 
-    def __writeMessage(self,message):
+    def __writeMessage(self, message):
         ''' __writeMessage(String)
                 Input   : String (Message to be desplayed on console
                 Output  : None
@@ -358,7 +358,7 @@ class connection:
         sys.stdout.write(message)
         sys.stdout.flush()
 
-    def __readFromConsole(self,message):
+    def __readFromConsole(self, message):
         '''
                 __readFromConsole(String) :
                     Input   : Message to be printed on screen
@@ -392,7 +392,7 @@ class connection:
         if choice.lower() == "n":
             self.___disconnectClient("refused",message["Key"],message["user"][1])
 
-    def __connectionTeaerDown(self,clientMessage,address,message):
+    def __connectionTeaerDown(self, clientMessage, address, message):
         '''
             __connectionTeaerDown(Object,tupple,String):
                 Input   : The Object sent by client, The address of Host, and message to be logged on terminal
@@ -406,7 +406,7 @@ class connection:
                 self.__destHostKey.pop(clientMessage["user"])
                 self.__addressUserNameMap.pop(address)
 
-    def __printChatMessage(self,clientMessage):
+    def __printChatMessage(self, clientMessage):
         '''
             __printChatMessage(Object):
             Input   : Object received from client
@@ -460,7 +460,7 @@ class connection:
             if response["message"] == "talkto":
                 self.__setDestHostKey(response)
 
-    def ___disconnectClient(self,message,key,address):
+    def ___disconnectClient(self, message, key, address):
         '''
             ___disconnectClient(String,String,tupple):
                 Input   :  The message to be sent for disconnection, The Key to encrypt message,
@@ -523,6 +523,13 @@ class connection:
 
 
     def logout(self):
+        '''
+            logout(None):
+                Input   : None
+                Output  : None
+                Purpose : Disconnect from all connected users and terminate client
+
+        '''
         for user in self.__destHostKey :
             self.___disconnectClient("logout",self.__destHostKey[user][1],self.__destHostKey[user][0])
         iv = os.urandom(16)
@@ -542,10 +549,10 @@ class connection:
         self.__writeMessage("It was a pleasure having you here\nGet back soon:)\n")
         sys.exit(0)
 
-    def handleClientMessage(self,message):
+    def handleClientMessage(self, message):
         '''
             handleClientMessage(String):
-                Input  : String
+                Input  : The message received from other client
                 Output : None
                 Purpose : Parse the users input from the terminal and perform appropriate
                             function to communicate with server

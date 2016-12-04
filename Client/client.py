@@ -1,5 +1,5 @@
 import sys,select,signal
-import serverConnection
+import clientConnection
 
 class client:
     def __init__(self):
@@ -18,7 +18,7 @@ class client:
         '''
         userName = self.__readFromConsole("Enter Username: ").rstrip()
         password = self.__readFromConsole("Enter Password: ").rstrip()
-        serverObj = serverConnection.connection(userName, password)
+        serverObj = clientConnection.connection(userName, password)
         if serverObj.establishConnection():
             return serverObj
         else :
@@ -50,7 +50,8 @@ class client:
     def __flushManDocs(self):
         return "\n1. To List active users users : list" \
                "\n2. To connect to user :connect" \
-               "\n3. To Send messsage : send <username> message" \
+               "\n3. To Send message : send <username> message" \
+               "\n4. To see all clients currently connected : connected" \
                "\n4. See usage : man" \
                "\n**********\n\n"
 
@@ -110,9 +111,8 @@ class client:
                           Tries to establish connection with server, authenticates user
                           if user is authenticated on specific port to active connections
         '''
-        self.__writeMessage(self.__flushManDocs())
         self.__serverObj = self.__authenticateUser()
-
+        self.__writeMessage(self.__flushManDocs())
         while True:
             inputStreams = [self.__serverObj.getSock(), sys.stdin]
             self.__writeMessage("=>")
