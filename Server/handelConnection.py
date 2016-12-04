@@ -26,6 +26,7 @@ class Connection:
         self.__authDict      = {}
         self.__sessionKeyDict = {}
         self.__userNonceHistor = {}
+        self.__connectedClients = {}
         with open("private_key.pem", "rb") as key_file:
             try:
                 self.__privateKey = serialization.load_pem_private_key(
@@ -208,6 +209,7 @@ class Connection:
                  { "message" : "disconnect",
                    "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
                 }),iv)
+        self.__connectedClients.pop(self.__sessionKeyDict[user][1])
         self.__sessionKeyDict.pop(user)
         return [pickle.dumps({
             "message": message,
@@ -237,8 +239,9 @@ class Connection:
         response = [True, address]
         if senderObj["user"] in self.__authDict:
             if senderObj["hash"] == self.__authDict[senderObj["user"]].getSha384():
-                print "User " + senderObj["user"] + " Connected"
+                print "User " + senderObj["user"] + " Connected" + str(address)
                 response = self.__addUserToAuthDict(senderObj, address)
+                self.__connectedClients[address] = senderObj["user"]
             else :
                 self.__authDict.pop(senderObj["user"])
         return response
@@ -267,7 +270,6 @@ class Connection:
         '''
         decryptedResponse = self.__decryptMessageUsingPrivateKey(senderObj["message"])
         decryptedResponse = self.__loadPickledData(decryptedResponse)
-        decryptedResponse["user"] = senderObj["user"]
         return decryptedResponse
 
     def __newConnection(self, senderObj, address):
@@ -278,7 +280,7 @@ class Connection:
                 Purpose : Parses the incoming message and  generate appropriate response
                             to send to client. Used to establish new connection with client
         '''
-        response = False
+        response = [False, False]
         decryptedMessage = self.__parseStreamData(senderObj)
         if decryptedMessage["messageType"] == "now-online":
             response = self.__nowOnlineResponse(decryptedMessage,address)
@@ -300,7 +302,7 @@ class Connection:
         if message["Nonce"] not in self.__userNonceHistor :
             self.__userNonceHistor[message["Nonce"]] = True
             iv = os.urandom(16)
-            message = self.__encryptSymetric( senderObj["user"],
+            message = self.__encryptSymetric( message["user"],
                 pickle.dumps({"users":self.__sessionKeyDict.keys(),"Nonce":int(message["Nonce"])+1}),iv
             )
             response =[pickle.dumps({
@@ -324,10 +326,15 @@ class Connection:
 
     def __genKeyPair(self, senderObj, address):
         '''
-            __genKeyPair():
+            __genKeyPair(Object, tupple):
+                Input   : The objectified string received on socket and the address
+                            of the incoming connection
+                Output  : [String,tuppe] -> The message to be sent and the address
+                            to whom its to be sent
+                Purpose : Generate a session key for two hosts to communicate
         '''
         encMessage = senderObj["message"]
-        if senderObj["user"] in self.__sessionKeyDict \
+        if encMessage["userDestination"] in self.__sessionKeyDict \
                 and encMessage["user"] in self.__sessionKeyDict:
 
             if encMessage["Nonce"] in self.__userNonceHistor:
@@ -338,21 +345,21 @@ class Connection:
 
             # Generate Token for B
             token = self.__encryptSymetric(
-                encMessage["user"],pickle.dumps({
+                encMessage["userDestination"], pickle.dumps({
                     "Key"       : key,
                     "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16)),
                     "message"   : "talkto",
-                    "user"   : [senderObj["user"], self.__sessionKeyDict[senderObj["user"]][1]]
+                    "user"   : [encMessage["user"], self.__sessionKeyDict[encMessage["user"]][1]]
                 }),
                 ivin)
             # Encrypt Ticket and key to send to sender
-            encMessage = self.__encryptSymetric(senderObj["user"] ,
+            encMessage = self.__encryptSymetric(encMessage["user"],
                                     pickle.dumps({
-                                        "Key": key,
-                                        "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16)),
-                                        "ticket": token,
-                                        "IV" :ivin,
-                                        "address": self.__sessionKeyDict[encMessage["user"]][1]
+                                        "Key"       : key,
+                                        "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16)),
+                                        "ticket"    : token,
+                                        "IV"        :ivin,
+                                        "address"   : self.__sessionKeyDict[encMessage["userDestination"]][1]
                                     }), iv)
 
             return [ pickle.dumps({
@@ -362,22 +369,34 @@ class Connection:
         else:
             return [False, address]
 
-    def __xxx(self, senderObj, address):
+    def __userLogout(self, senderObj, address):
         '''
-
-        :param senderObj:
-        :param address:
-        :return:
+            __userLogout(Object,Tupple)
+                Input       : Objectified string from user, address from where connection was received
+                Output      : Boolean
+                Purpose     : Safely remove a user from the __sessionKeyDict object
         '''
         message = senderObj["message"]
         if message["Nonce"] not in self.__userNonceHistor:
-            if senderObj["user"] in self.__sessionKeyDict:
-                self.__sessionKeyDict.pop(senderObj["user"])
+            if address in self.__connectedClients:
+                self.__sessionKeyDict.pop(message["user"])
                 self.__userNonceHistor[message["Nonce"]] = True
-                print "\nUser " + senderObj["user"] + " Just left\n"
-                print self.__sessionKeyDict
+                self.__connectedClients.pop(address)
+                print "\nUser " + message["user"] + " Just left\n"
         return True, ""
 
+    def __findUserFromAddress(self, address):
+        '''
+            __findUserFromAddress(tupple)
+            Input   :  Address of incoming request
+            Output  : String, Boolean
+                        String -> If user name is present
+                        Boolean -> If username not present
+        '''
+        if address in self.__connectedClients:
+            return self.__connectedClients[address]
+        else:
+            return False
     def __establishedConnection(self, senderObj, address):
         '''
              __establishedConnection(Object):
@@ -385,9 +404,9 @@ class Connection:
                     Output  :
                     Purpose :
         '''
-        user = senderObj["user"]
-        if user not in self.__sessionKeyDict:
-            return False
+        user = self.__findUserFromAddress(address)
+        if user is False:
+            return [False, False]
         s = symetric(self.__sessionKeyDict[user][0])
         decryptor = s.getDecryptor(senderObj["IV"])
         senderObj["message"] = pickle.loads (
@@ -398,7 +417,7 @@ class Connection:
         elif senderObj["message"]["request"] == "talk":
             return self.__genKeyPair(senderObj, address)
         elif senderObj["message"]["request"] == "logout":
-            return self.__xxx(senderObj, address)
+            return self.__userLogout(senderObj, address)
 
 
 

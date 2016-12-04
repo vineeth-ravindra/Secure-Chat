@@ -96,8 +96,13 @@ class connection:
                                     avilable on socket
         '''
         data = None
-        while data is None:
-            data, address = self.sock.recvfrom(4096)
+        try:
+            self.sock.settimeout(5)
+            while data is None:
+                data, address = self.sock.recvfrom(4096)
+        except Exception as e:
+            self.__serverOffline()
+            return [False, False]
         data = pickle.loads(data)
         return data, address
 
@@ -162,10 +167,10 @@ class connection:
                message = pickle.dumps({
                    "answer"      : x,
                    "pubKey"      : self.__pubKey,
-                   "messageType" : "quiz-response"
+                   "messageType" : "quiz-response",
+                   "user"        : self.__username,
                })
                return pickle.dumps({
-                   "user"       : self.__username,
                    "message"    : self.__encryptMessageWithServerPubKey(message),
                    "type"       : "asym"
                })
@@ -207,9 +212,13 @@ class connection:
         if self.__verifyPassword(gpowbw,self.__sharedSecret,long(data["hash"])) is False:
             return False
         hash = self.__gen384Hash(gpowbw,self.__sharedSecret)
-        objToEnc = pickle.dumps({"messageType" : "complete", "hash" : hash})
+        objToEnc = pickle.dumps(
+            {
+                "messageType" : "complete",
+                "hash"        : hash,
+                "user"         : self.__username
+            })
         obj = {
-            "user"      : self.__username,
             "message"   : self.__encryptMessageWithServerPubKey(objToEnc),
             "type"      : "asym"
         }
@@ -249,6 +258,15 @@ class connection:
             print "Invalid username password please try again"
             return False
 
+    def __serverOffline(self):
+        '''
+            __serverOffline(None):
+                Input   : None
+                Output  : None
+                Purpose : Handle if server is offline
+        '''
+        self.__writeMessage("\nServer not responding check input and try again later\n")
+
     def __listUsers(self):
         '''
             listUsers(None) :
@@ -260,17 +278,22 @@ class connection:
         iv = os.urandom(16)
         message  = self.__encryptSymetric(
             self.__sharedSecret,iv,
-            pickle.dumps({"request" : "list",
-                        "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))
-                    }))
+            pickle.dumps(
+                {
+                    "request"   : "list",
+                    "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16)),
+                    "user"      : self.__username,
+                }))
         obj = {
-            "user"      : self.__username,
             "message"   : message,
             "IV"        : iv,
             "type"      : "sym"
         }
         self.__sendData(pickle.dumps(obj))
         data, address = self.__recvData()
+        if data is False:
+            self.__serverOffline()
+            return
         message = self.__decryptSymetric(self.__sharedSecret,data["IV"],data["message"])
         message = pickle.loads(message)
         print "Users connected are ", message["users"]
@@ -311,10 +334,14 @@ class connection:
         # Step 1 : Say Hello
         self.__sayHello()
         data, address = self.__recvData()
+        if data is False:
+            return
         # Step 2 : Send Response to challange
         data = self.__puzzleSolve(data)
         self.__sendData(data)
         data, address = self.__recvData()
+        if data is False:
+            return
         # Step 3 : Generate Shared Secret and complete connection
         data = self.__establishSecret(data)
         if not data:
@@ -417,6 +444,8 @@ class connection:
                 Purpose : Handle clients requests to talk to server
         '''
         serverObj, address = self.__recvData()
+        if serverObj is False:
+            return
         try:
             response = pickle.loads(self.__decryptSymetric(self.__sharedSecret,
                                                       serverObj["IV"],serverObj["message"]))
@@ -425,6 +454,7 @@ class connection:
         if  "Nonce" in response and \
                         response["Nonce"] not in self.__serverNonceHistory:
             if response["message"] == "disconnect":
+                self.logout()
                 print "Server just kicked you out"
                 sys.exit(0)
             if response["message"] == "talkto":
@@ -462,11 +492,15 @@ class connection:
                 Purpose : Request Session key to server to talk to remote host and send same to remote host
         '''
         destHost = self.__readFromConsole("Whom do you wish to speak to :")
+        if destHost in self.__destHostKey:
+            self.__writeMessage("User already connected\n")
+            return
         iv = os.urandom(16)
         obj = pickle.dumps({
-            "request": "talk",
-            "user"    : destHost,
-            "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16))
+            "request"              : "talk",
+            "userDestination"      : destHost,
+            "Nonce"                : str(int(binascii.hexlify(os.urandom(8)), base=16)),
+            "user"                 : self.__username
         })
         encryptedMessage = self.__encryptSymetric(self.__sharedSecret, iv, obj)
         # Send data to server : Request Ticket from server
@@ -474,10 +508,11 @@ class connection:
             pickle.dumps({
                           "message" : encryptedMessage,
                           "IV"      : iv,
-                          "type"    : "sym",
-                          "user"    : self.__username,
+                          "type"    : "sym"
                       }))
         message, address = self.__recvData()
+        if message is False:
+            return
         message = pickle.loads(self.__decryptSymetric(self.__sharedSecret,message["IV"],message["message"]))
         # Send data to Client : Send token received from client
         self.__sendData(
@@ -493,14 +528,15 @@ class connection:
         iv = os.urandom(16)
         message = self.__encryptSymetric(
             self.__sharedSecret, iv,
-            pickle.dumps({"request": "logout",
-                          "Nonce": str(int(binascii.hexlify(os.urandom(8)), base=16))
-                          }))
+            pickle.dumps({
+                "request"   : "logout",
+                "Nonce"     : str(int(binascii.hexlify(os.urandom(8)), base=16)),
+                "user"      : self.__username
+          }))
         obj = {
-            "user": self.__username,
-            "message": message,
-            "IV": iv,
-            "type": "sym"
+            "message"   : message,
+            "IV"        : iv,
+            "type"      : "sym"
         }
         self.__sendData(pickle.dumps(obj))
         self.__writeMessage("It was a pleasure having you here\nGet back soon:)\n")
@@ -521,8 +557,19 @@ class connection:
             self.__talkToHost()
         elif message == "logout":
             self.logout()
+        elif message == "connected":
+            self.__showConnectedHosts()
         else:
             print "Unknown Message"
+
+    def __showConnectedHosts(self):
+        '''
+            __showConnected(None):
+                Input   : None
+                Output  : None
+                Purpose : Print the list of all users connected to  client
+        '''
+        self.__writeMessage("Connected Hosts :" + str(self.__destHostKey.keys()) + "\n")
 
     def sendMessageToClient(self,message):
         '''

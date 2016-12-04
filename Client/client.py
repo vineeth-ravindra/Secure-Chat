@@ -84,6 +84,8 @@ class client:
             return [True, "connect"]
         elif message[0] == "logout":
             return [True, "logout"]
+        elif message[0] == "connected":
+            return [True, "connected"]
         elif message[0] == "send":
             if len(message) > 1 and message is not "":
                 return [False, message[1:]]
