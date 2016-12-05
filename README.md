@@ -1,6 +1,6 @@
 # SECURE UDP CHAT
 
-### Secure UDP chat client allows users to communicate securely over a network. All data over the network is encrypted and the program is aimed providing the following features
+ Secure UDP chat client allows users to communicate securely over a network. All data over the network is encrypted and the program is aimed providing the following features
 
 * Perfect forward secracy
 * Identity hiding
@@ -42,7 +42,6 @@ python client.py -sp <server port>
 * See usage : man
 ```
 
-#
 # Dependencies 
 
 * Python cryptography
