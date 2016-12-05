@@ -126,6 +126,25 @@ class connection:
             sys.exit(0)
         return cipherText
 
+    def __verifySignature(self, message, signature):
+        '''
+            Input   : The message to be verified and the signature
+            Output  : Boolean
+            Purpose : Verify signature of server public key
+
+        '''
+        verifier = self.serverPublicKey.verifier(
+            signature,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH
+            ), hashes.SHA256())
+        verifier.update(message)
+        try:
+            verifier.verify()
+        except:
+            return False
+        return True
 
     def __sayHello(self):
         '''__sayHello(None) :
@@ -211,6 +230,8 @@ class connection:
         gpowbw =  self.__diffi.gen_gpowxw(serverPubKey,self.__passSecret)
         if self.__verifyPassword(gpowbw,self.__sharedSecret,long(data["hash"])) is False:
             return False
+        if not self.__verifySignature(str(data["hash"]), data["verifyServer"]):
+            return False
         hash = self.__gen384Hash(gpowbw,self.__sharedSecret)
         objToEnc = pickle.dumps(
             {
@@ -241,7 +262,7 @@ class connection:
         hash = int(binascii.hexlify(sha.digest()), base=16)
         return hash
 
-    def __verifyPassword(self,gpowbw,sharedSecret,serverHash):
+    def __verifyPassword(self, gpowbw, sharedSecret, serverHash):
         '''
             __verifyPassword(float,float,int) :
                 Input   : g^bw mod p, g^ab mod p , sha256(g^bw mod p + g^ab mod p)

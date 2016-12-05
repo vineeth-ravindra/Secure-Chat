@@ -129,11 +129,13 @@ class Connection:
             gpowbw = self.__diffiObj.gen_gpowxw(pubKey, userPassHash)
             hash256 = self.__genShaX(hashlib.sha256(),str(gpowbw) + str(sharedSecret))
             hash384 = self.__genShaX(hashlib.sha384(),str(gpowbw) + str(sharedSecret))
+            signedHash = self.__signMessage(str(hash256))
             authInfo.setSha348(hash384)
             response =  [pickle.dumps({
-                "messageType": "initiateSecret",
-                "hash": hash256,
-                "pubKey": pubKey,
+                "messageType"   : "initiateSecret",
+                "hash"          : hash256,
+                "pubKey"        : pubKey,
+                "verifyServer"  : signedHash
             }), address]
         return response
 
@@ -164,11 +166,32 @@ class Connection:
                     algorithm=hashes.SHA256(),
                     label=None))
         except Exception as e:
-            print "Unable to perform asymmetric decryption",e
+            print "Unable to perform asymmetric decryption", e
             sys.exit(0)
         return zlib.decompress(plainText)
 
-    def __logErrors(self,errTime,address):
+    def __signMessage(self, message):
+        '''
+            signMessage(String) :
+                Input   : The String to be signed
+                Output  : String (The signed String)
+                Purpose : To signed message
+        '''
+        signer =  self.__privateKey.signer(
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.MAX_LENGTH),
+            hashes.SHA256())
+        try:
+            signer.update(message)
+            signature = signer.finalize()
+        except:
+            print "Unable to sign file"
+            sys.exit(0)
+        return signature
+
+
+    def __logErrors(self, errTime, address):
         '''
             __logErrors(String,tuple):
                 Input   : String , Tuple(address)
