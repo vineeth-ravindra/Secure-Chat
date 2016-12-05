@@ -52,7 +52,8 @@ class client:
                "\n2. To connect to user :connect" \
                "\n3. To Send message : send <username> message" \
                "\n4. To see all clients currently connected : connected" \
-               "\n4. See usage : man" \
+               "\n5. Logout : logout" \
+               "\n6. See usage : man" \
                "\n**********\n\n"
 
 
