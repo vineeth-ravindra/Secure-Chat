@@ -8,7 +8,7 @@ class server():
             * Opens socket on port 2424 and listens for connections from clients
         Note : Uses SERVER.conf to obtain config related information
     '''
-    def __init__(self):
+    def __init__(self,port):
         '''
             __init__(None):
                 Input   : None
@@ -24,7 +24,7 @@ class server():
             print "Failed to create socket"
             sys.exit(0)
         try:
-            self.sock.bind(('', 2424))
+            self.sock.bind(('', port))
         except socket.error , msg:
             print "Failed to bind to socket "
             print msg
@@ -92,8 +92,35 @@ class server():
         self.__closeSocket()
         sys.exit(0)
 
+
+def terminalError():
+    '''
+        Output  : None
+        Purpose : Log error in starting program
+    '''
+    print "Please provide sufficient arguments\nUsage : python server.py -sp <server port>"
+    sys.exit(0)
+
+def checkParameters():
+    '''
+        Output  : Number
+        Purpose : Check if the input to the program is valid
+    '''
+    args = sys.argv
+    if len(args) < 3:
+        terminalError()
+    if not args[1] == "-sp":
+        terminalError()
+    try:
+        port = int(args[2])
+    except Exception as e:
+        terminalError()
+    return port
+
+
 if __name__ == "__main__":
     c = serverConnection.Connection()
-    s = server()
+    port = checkParameters()
+    s = server(port)
     signal.signal(signal.SIGINT, s.signal_handler)
     s.run(c)

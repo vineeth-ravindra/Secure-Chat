@@ -2,12 +2,12 @@ import sys,select,signal
 import clientConnection
 
 class client:
-    def __init__(self):
+    def __init__(self, port):
         print "********************************"
         print "Welcome to the secure terminal"
         print "have a fun time :)"
         print "********************************\n"
-
+        self.__ServerPort = port
 
     def __authenticateUser(self):
         '''
@@ -18,7 +18,7 @@ class client:
         '''
         userName = self.__readFromConsole("Enter Username: ").rstrip()
         password = self.__readFromConsole("Enter Password: ").rstrip()
-        serverObj = clientConnection.connection(userName, password)
+        serverObj = clientConnection.connection(userName, password, self.__ServerPort)
         if serverObj.establishConnection():
             return serverObj
         else :
@@ -131,7 +131,33 @@ class client:
                     elif msg and not msg[0]:
                         self.__serverObj.sendMessageToClient(msg[1])
 
+def terminalError():
+    '''
+        Output  : None
+        Purpose : Log error in starting program
+    '''
+    print "Please provide sufficient arguments\nUsage : python client.py -sp <server port>"
+    sys.exit(0)
+
+def checkParameters():
+    '''
+        Output  : Number
+        Purpose : Check if the input to the program is valid
+    '''
+    args = sys.argv
+    if len(args) < 3:
+        terminalError()
+    if not args[1] == "-sp":
+        terminalError()
+    try:
+        port = int(args[2])
+    except Exception as e:
+        terminalError()
+    return port
+
+
 if __name__ == "__main__":
-    c = client()
+    port = checkParameters()
+    c = client(port)
     signal.signal(signal.SIGINT, c.signal_handler)
     c.run()

@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import serialization,hashes
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.asymmetric import padding
 
-
+serverPort = 0
 class connection:
     '''
         Connection Object is a Singleton.
@@ -18,7 +18,7 @@ class connection:
                   3) Request Server for user Keys
 
     '''
-    def __init__(self,username,password):
+    def __init__(self, username, password, port):
         '''
             __init__(None) :
                 Input   : None
@@ -36,7 +36,8 @@ class connection:
         self.__serverNonceHistory = []
         self.__addressUserNameMap = {}
         self.__pubKey = self.__diffi.gen_public_key()
-
+        global serverPort
+        serverPort = int(port)
         try:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         except Exception as e:
@@ -77,12 +78,14 @@ class connection:
             sys.exit(0)
 
 
-    def __sendData(self,message,address = ('',2424)):
+    def __sendData(self,message,address = ('', serverPort)):
         ''' __sendData(String) :
                         Input   : String(Message to be sent to server)
                         Output  : None
                         Purpose : Sends the given String to the server
         '''
+        if address[1] == 0:
+            address = ('', serverPort)
         try:
             self.sock.sendto(message, address)
         except Exception as e:
